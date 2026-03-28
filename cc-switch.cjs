@@ -102,6 +102,24 @@ function getPreferredDisplayName(account) {
   return '(no display name)';
 }
 
+function inferPlanType(account) {
+  const hasOrgScope = Boolean(account.organizationRole) || Boolean(account.workspaceRole);
+
+  if (hasOrgScope) {
+    return account.billingType === 'stripe_subscription' ? 'Teams' : 'Enterprise';
+  }
+
+  if (account.hasExtraUsageEnabled === true) {
+    return 'Max';
+  }
+
+  if (account.billingType === 'stripe_subscription') {
+    return 'Pro';
+  }
+
+  return 'Unknown';
+}
+
 function ensureOauthList(config) {
   if (!Array.isArray(config.oauthList)) {
     config.oauthList = [];
@@ -194,7 +212,8 @@ function formatAccountSummary(accounts, currentAccount) {
     const displayName = getPreferredDisplayName(entry);
     const email = entry.emailAddress && String(entry.emailAddress).trim() ? entry.emailAddress : '(no email)';
     const org = entry.organizationName && String(entry.organizationName).trim() ? entry.organizationName : '(no organization)';
-    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org}`;
+    const plan = inferPlanType(entry);
+    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan}`;
   });
 }
 
@@ -238,7 +257,8 @@ function main() {
     const currentKey = getAccountKey(config.oauthAccount);
     const currentEntry = config.oauthList.find((entry) => getAccountKey(entry) === currentKey);
     const currentIndex = currentEntry ? currentEntry.index : '?';
-    console.log(`Switched active oauthAccount to [${currentIndex}] ${getPreferredDisplayName(config.oauthAccount)} <${config.oauthAccount.emailAddress}>.`);
+    const currentPlan = inferPlanType(config.oauthAccount);
+    console.log(`Switched active oauthAccount to [${currentIndex}] ${getPreferredDisplayName(config.oauthAccount)} <${config.oauthAccount.emailAddress}> (${currentPlan}).`);
     console.log('');
     console.log('Current account list:');
     for (const line of formatAccountSummary(config.oauthList, config.oauthAccount)) {

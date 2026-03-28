@@ -64,21 +64,21 @@ Example shell output:
 ```text
 $ cc-switch
 Available Claude accounts:
-* [0] Alex Example <alex@example.invalid> - Example Workspace
-  [1] Taylor Example <taylor@example.invalid> - Example Workspace
-  [2] Jordan Example <jordan@example.invalid> - Example Workspace
+* [0] Alex Example <alex@example.invalid> - Example Workspace - Pro
+  [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams
+  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise
 
 Run cc-switch <index|email|accountUuid> to make one of these entries the active oauthAccount.
 ```
 
 ```text
 $ cc-switch 1
-Switched active oauthAccount to [1] Taylor Example <taylor@example.invalid>.
+Switched active oauthAccount to [1] Taylor Example <taylor@example.invalid> (Teams).
 
 Current account list:
-  [0] Alex Example <alex@example.invalid> - Example Workspace
-* [1] Taylor Example <taylor@example.invalid> - Example Workspace
-  [2] Jordan Example <jordan@example.invalid> - Example Workspace
+  [0] Alex Example <alex@example.invalid> - Example Workspace - Pro
+* [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams
+  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise
 ```
 
 Claude chat shell usage:
@@ -100,6 +100,7 @@ Behavior notes:
 - It preserves stable account ordering instead of moving the active account to the end on every sync.
 - It creates a backup before writing.
 - If a stored `displayName` is already corrupted, output falls back to the email local part.
+- The displayed plan type is a best-effort inference from the available account fields.
 
 Warnings:
 - This is a local workaround, not an official Claude plugin.
