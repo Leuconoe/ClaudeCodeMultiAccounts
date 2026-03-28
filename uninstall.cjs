@@ -32,8 +32,11 @@ function uninstallCommands() {
   const settingsPath = path.join(home, '.claude', 'settings.json');
   const backupDir = path.join(home, '.claude', 'backups', 'multi-account-switch-installer');
   const hookCommand = process.platform === 'win32'
-    ? `& '${path.join(userBinDir, 'cc-sync-oauth.cmd')}'`
-    : path.join(userBinDir, 'cc-sync-oauth');
+    ? `node "${path.join(installRoot, 'bin', 'cc-switch.cjs')}" sync`
+    : `node '${path.join(installRoot, 'bin', 'cc-switch.cjs')}' sync`;
+  const startupHookCommand = process.platform === 'win32'
+    ? `node "${path.join(installRoot, 'hooks', 'session-start.cjs')}"`
+    : `node '${path.join(installRoot, 'hooks', 'session-start.cjs')}'`;
 
   if (fs.existsSync(settingsPath)) {
     backupFile(settingsPath, backupDir);
@@ -48,11 +51,22 @@ function uninstallCommands() {
           return nextHooks.length > 0 ? { ...entry, hooks: nextHooks } : null;
         })
         .filter(Boolean);
-      writeJson(settingsPath, settings);
     }
+    if (settings.hooks && Array.isArray(settings.hooks.SessionStart)) {
+      settings.hooks.SessionStart = settings.hooks.SessionStart
+        .map((entry) => {
+          if (!entry || entry.matcher !== 'startup' || !Array.isArray(entry.hooks)) {
+            return entry;
+          }
+          const nextHooks = entry.hooks.filter((hook) => !(hook && hook.type === 'command' && hook.command === startupHookCommand));
+          return nextHooks.length > 0 ? { ...entry, hooks: nextHooks } : null;
+        })
+        .filter(Boolean);
+    }
+    writeJson(settingsPath, settings);
   }
 
-  for (const name of ['cc-switch', 'cc-sync-oauth', 'cc-switch.cmd', 'cc-sync-oauth.cmd']) {
+  for (const name of ['cc-switch', 'cc-sync-oauth', 'ccs', 'ccso', 'cc-switch.cmd', 'cc-sync-oauth.cmd', 'ccs.cmd', 'ccso.cmd']) {
     const target = path.join(userBinDir, name);
     if (fs.existsSync(target)) {
       fs.rmSync(target, { force: true });

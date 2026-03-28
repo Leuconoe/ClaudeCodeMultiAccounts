@@ -6,6 +6,8 @@ Supported user-facing commands:
 - `cc-switch`
 - `cc-switch <index|email|accountUuid>`
 - `cc-sync-oauth`
+- `ccs` (short alias for `cc-switch`)
+- `ccso` (short alias for `cc-sync-oauth`)
 
 Supported environments:
 - Windows (PowerShell/CMD/Git Bash)
@@ -33,8 +35,9 @@ npx claude-code-multi-accounts install
 
 What install does:
 - copies the Node CLI into `~/.claude/multi-account-switch/bin`
-- installs `cc-switch` and `cc-sync-oauth` wrapper commands
+- installs `cc-switch`, `cc-sync-oauth`, `ccs`, and `ccso` wrapper commands
 - adds an `auth_success` hook entry to `~/.claude/settings.json`
+- adds a `SessionStart` reminder hook to `~/.claude/settings.json`
 - creates backups under `~/.claude/backups/multi-account-switch-installer`
 
 Uninstall:
@@ -57,6 +60,8 @@ Usage:
 cc-switch
 cc-switch 1
 cc-sync-oauth
+ccs
+ccso
 ```
 
 Example shell output:
@@ -87,18 +92,21 @@ Claude chat shell usage:
 !cc-switch
 !cc-switch 1
 !cc-sync-oauth
+!ccs
+!ccso
 ```
 
-Claude slash command usage:
+Claude startup reminder:
 
 ```text
-/cc-switch
-/cc-switch 1
-/cc-sync-oauth
+Claude Code Multi-Account Switcher is available.
+Use !cc-switch or !ccs to list/switch accounts.
+Use !cc-sync-oauth or !ccso to sync the active account into oauthList.
 ```
 
 Platform notes:
 - Windows installs `cc-switch.cmd` and `cc-sync-oauth.cmd` into `~/bin`, plus Git Bash-friendly `cc-switch` and `cc-sync-oauth` wrappers in the same directory.
+- Short aliases `ccs` and `ccso` are installed alongside the full command names.
 - Native macOS/Linux installs commands into `~/.local/bin`.
 - WSL also uses the Unix shell wrappers.
 - If a shell says `command not found` right after install, restart the shell or run `hash -r` once.
