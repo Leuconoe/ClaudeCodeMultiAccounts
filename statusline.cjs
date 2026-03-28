@@ -5,10 +5,6 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-function getClaudeConfigPath() {
-  return path.join(os.homedir(), '.claude.json');
-}
-
 function getInstallRoot() {
   return path.join(os.homedir(), '.claude', 'multi-account-switch');
 }
@@ -22,58 +18,8 @@ function readJsonIfExists(filePath, fallback = null) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
-function getAccountKey(account) {
-  if (account?.accountUuid && String(account.accountUuid).trim()) {
-    return `uuid:${String(account.accountUuid).trim().toLowerCase()}`;
-  }
-  if (account?.emailAddress && String(account.emailAddress).trim()) {
-    return `email:${String(account.emailAddress).trim().toLowerCase()}`;
-  }
-  return null;
-}
-
-function isSuspiciousDisplayName(value) {
-  return value.includes('\uFFFD') || (value.match(/\?/g) || []).length >= 2;
-}
-
-function getPreferredDisplayName(account) {
-  if (account?.displayName && String(account.displayName).trim()) {
-    const displayName = String(account.displayName).trim();
-    if (!isSuspiciousDisplayName(displayName)) {
-      return displayName;
-    }
-  }
-
-  if (account?.emailAddress && String(account.emailAddress).trim()) {
-    const email = String(account.emailAddress).trim();
-    const atIndex = email.indexOf('@');
-    return atIndex > 0 ? email.slice(0, atIndex) : email;
-  }
-
-  return 'unknown';
-}
-
-function inferPlanType(account) {
-  const hasOrgScope = Boolean(account?.organizationRole) || Boolean(account?.workspaceRole);
-  if (hasOrgScope) {
-    return account.billingType === 'stripe_subscription' ? 'Teams' : 'Enterprise';
-  }
-  if (account?.hasExtraUsageEnabled === true) {
-    return 'Max';
-  }
-  if (account?.billingType === 'stripe_subscription') {
-    return 'Pro';
-  }
-  return 'Unknown';
-}
-
 function getStatuslineLabel() {
-  const config = readJsonIfExists(getClaudeConfigPath(), {});
-  const account = config?.oauthAccount || (Array.isArray(config?.oauthList) ? config.oauthList.find((entry) => getAccountKey(entry)) : null);
-  if (!account) {
-    return 'acct: unavailable';
-  }
-  return `acct: ${getPreferredDisplayName(account)} | plan: ${inferPlanType(account)}`;
+  return 'use !cc-switch / !ccs';
 }
 
 function runDownstream(input) {

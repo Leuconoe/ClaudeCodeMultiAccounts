@@ -38,7 +38,7 @@ What install does:
 - installs `cc-switch`, `cc-sync-oauth`, `ccs`, and `ccso` wrapper commands
 - adds an `auth_success` hook entry to `~/.claude/settings.json`
 - adds a `SessionStart` reminder hook to `~/.claude/settings.json`
-- if `statusLine.command` already exists, wraps it and prepends `acct: ... | plan: ...` to the existing HUD output
+- if `statusLine.command` already exists, wraps it and prepends `use !cc-switch / !ccs` to the existing HUD output
 - creates backups under `~/.claude/backups/multi-account-switch-installer`
 
 Uninstall:
