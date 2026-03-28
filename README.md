@@ -89,6 +89,14 @@ Claude chat shell usage:
 !cc-sync-oauth
 ```
 
+Claude slash command usage:
+
+```text
+/cc-switch
+/cc-switch 1
+/cc-sync-oauth
+```
+
 Platform notes:
 - Windows installs `cc-switch.cmd` and `cc-sync-oauth.cmd` into `~/bin`, plus Git Bash-friendly `cc-switch` and `cc-sync-oauth` wrappers in the same directory.
 - Native macOS/Linux installs commands into `~/.local/bin`.
@@ -110,5 +118,4 @@ Warnings:
 
 After this:
 - npm publish / `npx` distribution
-- `/command` support
 - plan type exposure (`Pro`, `Max`, `Teams`, `Enterprise`)
