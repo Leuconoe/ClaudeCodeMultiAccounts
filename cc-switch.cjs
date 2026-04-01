@@ -315,6 +315,10 @@ function fetchUsage(accessToken) {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
+        if (res.statusCode === 429) {
+          resolve({ rate_limited: true, retry_after: res.headers['retry-after'] || null });
+          return;
+        }
         if (res.statusCode !== 200) {
           reject(new Error(`Usage API returned ${res.statusCode}: ${data}`));
           return;
@@ -333,6 +337,12 @@ function fetchUsage(accessToken) {
 
 function formatUsageInfo(usage) {
   const lines = [];
+  if (usage.rate_limited) {
+    const retrySecs = usage.retry_after ? parseInt(usage.retry_after, 10) : null;
+    const retryMsg = retrySecs ? ` Try again in ~${retrySecs}s.` : ' Try again in a few seconds.';
+    lines.push(`Usage API is rate limited.${retryMsg}`);
+    return lines;
+  }
   if (usage.five_hour) {
     const pct = typeof usage.five_hour.utilization === 'number' ? usage.five_hour.utilization.toFixed(1) : 'N/A';
     const resetsAt = usage.five_hour.resets_at ? new Date(usage.five_hour.resets_at).toLocaleString() : 'unknown';
