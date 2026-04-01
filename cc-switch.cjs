@@ -24,7 +24,28 @@ function getDefaultBackupDir() {
   return path.join(os.homedir(), '.claude', 'backups', 'multi-account-switch');
 }
 
+function getDefaultConfigDir() {
+  return path.join(os.homedir(), '.claude', 'multi-account-switch');
+}
+
+function getSettingsPath() {
+  return path.join(getDefaultConfigDir(), 'settings.json');
+}
+
+function readSettings() {
+  const p = getSettingsPath();
+  if (!fs.existsSync(p)) return { showUsage: true };
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return { showUsage: true }; }
+}
+
+function writeSettings(s) {
+  const p = getSettingsPath();
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n', 'utf8');
+}
+
 function parseArgs(argv) {
+  const settings = readSettings();
   const options = {
     usageCommand: '/switch',
     configPath: getDefaultConfigPath(),
@@ -33,6 +54,7 @@ function parseArgs(argv) {
     backupDir: getDefaultBackupDir(),
     syncOnly: false,
     usageOnly: false,
+    showUsage: settings.showUsage !== false,
     selector: '',
   };
 
@@ -66,6 +88,22 @@ function parseArgs(argv) {
     if (current === '--usage' || current === 'usage') {
       options.usageOnly = true;
       continue;
+    }
+    if (current === '--show-usage') {
+      options.showUsage = true;
+      const s = readSettings();
+      s.showUsage = true;
+      writeSettings(s);
+      console.log('Usage display enabled.');
+      return options;
+    }
+    if (current === '--hide-usage') {
+      options.showUsage = false;
+      const s = readSettings();
+      s.showUsage = false;
+      writeSettings(s);
+      console.log('Usage display disabled.');
+      return options;
     }
     if (!options.selector) {
       options.selector = current;
@@ -384,6 +422,25 @@ function main() {
         console.log(line);
       }
       console.log('');
+
+      if (options.showUsage) {
+        const accessToken = credentials?.claudeAiOauth?.accessToken;
+        if (accessToken) {
+          return fetchUsage(accessToken).then((usage) => {
+            console.log('--- Usage ---');
+            for (const line of formatUsageInfo(usage)) {
+              console.log(line);
+            }
+            console.log('');
+            console.log(`Run ${options.usageCommand} <index|email|accountUuid> to make one of these stored entries the active Claude account.`);
+          }).catch((err) => {
+            console.log(`Usage info unavailable: ${err.message}`);
+            console.log('');
+            console.log(`Run ${options.usageCommand} <index|email|accountUuid> to make one of these stored entries the active Claude account.`);
+          });
+        }
+      }
+
       console.log(`Run ${options.usageCommand} <index|email|accountUuid> to make one of these stored entries the active Claude account.`);
       return;
     }
