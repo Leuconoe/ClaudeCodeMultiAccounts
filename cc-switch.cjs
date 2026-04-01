@@ -296,16 +296,7 @@ function findSelection(accounts, selector) {
     if (byIndex) return byIndex;
   }
 
-  const normalized = trimmed.toLowerCase();
-  for (const entry of accounts) {
-    for (const candidate of [entry.key, entry.metadata?.accountUuid, entry.metadata?.emailAddress, entry.metadata?.displayName]) {
-      if (candidate && String(candidate).trim().toLowerCase() === normalized) {
-        return entry;
-      }
-    }
-  }
-
-  throw new Error(`No account matched selector '${selector}'.`);
+  throw new Error(`No account matched index '${trimmed}'. Use a numeric index.`);
 }
 
 function formatRelativeTime(isoString) {
@@ -327,10 +318,11 @@ function formatResetEstimate(isoString) {
     const diff = rateLimitReset - Date.now();
     if (diff > 0) {
       const hours = Math.floor(diff / (1000 * 60 * 60));
-      if (hours < 24) return `~${hours}h`;
-      const days = Math.floor(hours / 24);
-      const remainingHours = hours % 24;
-      return `~${days}d ${remainingHours}h`;
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      if (hours > 0) return `~${hours}h ${minutes}m`;
+      if (minutes > 0) return `~${minutes}m ${seconds}s`;
+      return `~${seconds}s`;
     }
   }
   if (!isoString) return 'unknown';
@@ -491,21 +483,29 @@ function main() {
         const accessToken = credentials?.claudeAiOauth?.accessToken;
         if (accessToken) {
           return fetchUsage(accessToken).then((usage) => {
-            console.log('--- Usage ---');
-            for (const line of formatUsageInfo(usage)) {
-              console.log(line);
+            if (usage.rate_limited) {
+              console.log('--- Usage ---');
+              for (const line of formatUsageInfo(usage)) {
+                console.log(line);
+              }
+              console.log('');
             }
-            console.log('');
-            console.log(`Run ${options.usageCommand} <index|email|accountUuid> to make one of these stored entries the active Claude account.`);
+            console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
           }).catch((err) => {
+            if (err.message && err.message.includes('401')) {
+              console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
+              return;
+            }
             console.log(`Usage info unavailable: ${err.message}`);
             console.log('');
-            console.log(`Run ${options.usageCommand} <index|email|accountUuid> to make one of these stored entries the active Claude account.`);
+            console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
           });
         }
       }
 
-      console.log(`Run ${options.usageCommand} <index|email|accountUuid> to make one of these stored entries the active Claude account.`);
+      console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
+
+      console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
       return;
     }
 
