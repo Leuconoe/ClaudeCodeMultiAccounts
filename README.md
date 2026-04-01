@@ -6,7 +6,7 @@ This project installs a local workaround for switching Claude Code OAuth account
 
 Supported user-facing commands:
 - `cc-switch`
-- `cc-switch <index|email|accountUuid>`
+- `cc-switch <index>`
 - `cc-sync-oauth`
 - `ccs` (short alias for `cc-switch`)
 - `ccso` (short alias for `cc-sync-oauth`)
@@ -75,23 +75,31 @@ Example shell output:
 
 ```text
 $ cc-switch
-Available Claude accounts:
-* [0] Alex Example <alex@example.invalid> - Example Workspace - Pro
-  [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams
-  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise
+--- Usage ---
+Usage API is rate limited. Resets in ~45m 22s (at 10:52 PM).
 
-Run cc-switch <index|email|accountUuid> to make one of these stored entries the active Claude account.
+Available Claude accounts:
+* [0] Alex Example <alex@example.invalid> - Example Workspace - Pro | synced: just now | used: 3h ago | reset: ~45m 22s
+  [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams | synced: never | used: never | reset: ~6d 17h
+  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise | synced: 1d ago | used: never | reset: ~5d 12h
+
+Run cc-switch <index> to make one of these stored entries the active Claude account.
 ```
 
 ```text
 $ cc-switch 1
-Switched active oauthAccount to [1] Taylor Example <taylor@example.invalid> (Teams).
+Switched active account to [1] Taylor Example <taylor@example.invalid> (Teams).
 
-Current account list:
-  [0] Alex Example <alex@example.invalid> - Example Workspace - Pro
-* [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams
-  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise
+Stored account list:
+  [0] Alex Example <alex@example.invalid> - Example Workspace - Pro | synced: just now | used: 3h ago | reset: unknown
+* [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams | synced: never | used: just now | reset: unknown
+  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise | synced: 1d ago | used: never | reset: unknown
 ```
+
+Output columns:
+- `synced`: When the account was last synced into the store
+- `used`: When the account was last selected via switch
+- `reset`: Rate limit reset countdown (current account only) or 7-day window estimate
 
 Claude chat shell usage:
 
@@ -136,6 +144,10 @@ Behavior notes:
 - Stored account ordering is stable.
 - If a stored `displayName` is already corrupted, output falls back to the email local part.
 - The displayed plan type is a best-effort inference from the available account fields and credential snapshot.
+- The `reset:` column shows rate limit countdown for the current account, or a 7-day window estimate for others.
+- Usage info from the Claude API is shown before the account list when rate limited.
+- The `reset:` column shows rate limit countdown for the current account, or a 7-day window estimate for others.
+- Usage info from the Claude API is shown before the account list when rate limited.
 
 Warnings:
 - This is a local workaround, not an official Claude plugin.
@@ -144,6 +156,6 @@ Warnings:
 - npm packaging is prepared, but npm registry publish still requires npm authentication.
 
 After this:
-- npm / `npx` release refresh for `v0.2.0`
+- npm / `npx` release refresh for `v0.2.3`
 - non-AI hook execution path for `/cc-switch` if Claude exposes a direct command hook in the future
 - improve plan type detection beyond the current best-effort inference
