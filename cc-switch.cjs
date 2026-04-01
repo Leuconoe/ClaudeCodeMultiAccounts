@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const STORE_VERSION = '0.2.0';
+const STORE_VERSION = '0.2.1';
+const RESET_WINDOW_DAYS = 7;
 
 function getDefaultConfigPath() {
   return path.join(os.homedir(), '.claude.json');
@@ -181,11 +182,15 @@ function syncStoreFromLive(store, config, credentials) {
   }
 
   const key = getAccountKey(config.oauthAccount);
+  const now = new Date().toISOString();
+  const existingEntry = store.accounts?.find((e) => e.key === key);
   const snapshot = {
     key,
     metadata: deepCopy(config.oauthAccount),
     credentials: deepCopy(credentials),
-    capturedAt: new Date().toISOString(),
+    capturedAt: now,
+    lastSyncedAt: now,
+    lastUsedAt: existingEntry?.lastUsedAt || undefined,
   };
 
   const nextStore = normalizeStore(deepCopy(store));
@@ -229,6 +234,58 @@ function findSelection(accounts, selector) {
   throw new Error(`No account matched selector '${selector}'.`);
 }
 
+function formatRelativeTime(isoString) {
+  if (!isoString) return 'never';
+  const diff = Date.now() - new Date(isoString).getTime();
+  if (diff < 0) return 'just now';
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatResetEstimate(isoString) {
+  if (!isoString) return 'unknown';
+  const resetDate = new Date(new Date(isoString).getTime() + RESET_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const diff = resetDate.getTime() - now.getTime();
+  if (diff <= 0) return 'reset now';
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  if (hours < 24) return `~${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return `~${days}d ${remainingHours}h`;
+}
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return 'never';
+  const diff = Date.now() - new Date(isoString).getTime();
+  if (diff < 0) return 'just now';
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatResetEstimate(isoString) {
+  if (!isoString) return 'unknown';
+  const resetDate = new Date(new Date(isoString).getTime() + RESET_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const diff = resetDate.getTime() - now.getTime();
+  if (diff <= 0) return 'reset now';
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  if (hours < 24) return `~${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return `~${days}d ${remainingHours}h`;
+}
+
 function formatAccountSummary(accounts) {
   return accounts.map((entry) => {
     const marker = entry.current ? '*' : ' ';
@@ -237,7 +294,10 @@ function formatAccountSummary(accounts) {
     const email = metadata.emailAddress && String(metadata.emailAddress).trim() ? metadata.emailAddress : '(no email)';
     const org = metadata.organizationName && String(metadata.organizationName).trim() ? metadata.organizationName : '(no organization)';
     const plan = inferPlanType(entry);
-    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan}`;
+    const lastSynced = formatRelativeTime(entry.lastSyncedAt);
+    const lastUsed = formatRelativeTime(entry.lastUsedAt);
+    const resetEst = formatResetEstimate(entry.lastSyncedAt);
+    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan} | synced: ${lastSynced} | used: ${lastUsed} | reset: ${resetEst}`;
   });
 }
 
@@ -291,11 +351,18 @@ function main() {
     }
 
     const selected = findSelection(accounts, options.selector);
+    const now = new Date().toISOString();
+    const storeIndex = store.accounts.findIndex((e) => e.key === selected.key);
+    if (storeIndex >= 0) {
+      store.accounts[storeIndex].lastUsedAt = now;
+    }
     const nextConfig = deepCopy(config);
     const nextCredentials = deepCopy(selected.credentials);
     nextConfig.oauthAccount = deepCopy(selected.metadata);
 
     writeLiveState(nextConfig, nextCredentials, options);
+    writeStore(store, options);
+    writeStore(store, options);
 
     const currentAccounts = getDisplayAccounts(store, selected.metadata);
     const currentPlan = inferPlanType(selected);
