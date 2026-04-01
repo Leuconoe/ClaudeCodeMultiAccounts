@@ -44,6 +44,36 @@ function writeSettings(s) {
   fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n', 'utf8');
 }
 
+function getRateLimitResetAt() {
+  const s = readSettings();
+  if (s.rateLimitResetAt) {
+    const resetTime = new Date(s.rateLimitResetAt).getTime();
+    if (resetTime > Date.now()) return resetTime;
+  }
+  return null;
+}
+
+function setRateLimitResetAt(retryAfterSecs) {
+  const s = readSettings();
+  s.rateLimitResetAt = new Date(Date.now() + retryAfterSecs * 1000).toISOString();
+  writeSettings(s);
+}
+
+function getRateLimitResetAt() {
+  const s = readSettings();
+  if (s.rateLimitResetAt) {
+    const resetTime = new Date(s.rateLimitResetAt).getTime();
+    if (resetTime > Date.now()) return resetTime;
+  }
+  return null;
+}
+
+function setRateLimitResetAt(retryAfterSecs) {
+  const s = readSettings();
+  s.rateLimitResetAt = new Date(Date.now() + retryAfterSecs * 1000).toISOString();
+  writeSettings(s);
+}
+
 function parseArgs(argv) {
   const settings = readSettings();
   const options = {
@@ -292,6 +322,17 @@ function formatRelativeTime(isoString) {
 }
 
 function formatResetEstimate(isoString) {
+  const rateLimitReset = getRateLimitResetAt();
+  if (rateLimitReset) {
+    const diff = rateLimitReset - Date.now();
+    if (diff > 0) {
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      if (hours < 24) return `~${hours}h`;
+      const days = Math.floor(hours / 24);
+      const remainingHours = hours % 24;
+      return `~${days}d ${remainingHours}h`;
+    }
+  }
   if (!isoString) return 'unknown';
   const resetDate = new Date(new Date(isoString).getTime() + RESET_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const now = new Date();
@@ -316,7 +357,9 @@ function fetchUsage(accessToken) {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode === 429) {
-          resolve({ rate_limited: true, retry_after: res.headers['retry-after'] || null });
+          const retrySecs = res.headers['retry-after'] ? parseInt(res.headers['retry-after'], 10) : null;
+          if (retrySecs) setRateLimitResetAt(retrySecs);
+          resolve({ rate_limited: true, retry_after: retrySecs });
           return;
         }
         if (res.statusCode !== 200) {
@@ -339,8 +382,19 @@ function formatUsageInfo(usage) {
   const lines = [];
   if (usage.rate_limited) {
     const retrySecs = usage.retry_after ? parseInt(usage.retry_after, 10) : null;
-    const retryMsg = retrySecs ? ` Try again in ~${retrySecs}s.` : ' Try again in a few seconds.';
-    lines.push(`Usage API is rate limited.${retryMsg}`);
+    if (retrySecs) {
+      const resetAt = new Date(Date.now() + retrySecs * 1000);
+      const h = Math.floor(retrySecs / 3600);
+      const m = Math.floor((retrySecs % 3600) / 60);
+      const s = retrySecs % 60;
+      let countdown = '';
+      if (h > 0) countdown = `~${h}h ${m}m`;
+      else if (m > 0) countdown = `~${m}m ${s}s`;
+      else countdown = `~${s}s`;
+      lines.push(`Usage API is rate limited. Resets in ${countdown} (at ${resetAt.toLocaleTimeString()}).`);
+    } else {
+      lines.push('Usage API is rate limited. Try again in a few seconds.');
+    }
     return lines;
   }
   if (usage.five_hour) {
