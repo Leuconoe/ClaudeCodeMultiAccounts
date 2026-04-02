@@ -574,19 +574,10 @@ function main() {
       if (options.showUsage) {
         const accessToken = credentials?.claudeAiOauth?.accessToken;
         if (accessToken) {
-          return refreshStoredUsageSnapshots(store, getAccountKey(config.oauthAccount)).then(({ currentUsage, changed }) => {
+          return refreshStoredUsageSnapshots(store, getAccountKey(config.oauthAccount)).then(({ changed }) => {
             if (changed) {
               writeStore(store, options);
             }
-            console.log('--- Usage ---');
-            if (currentUsage) {
-              for (const line of formatUsageInfo(currentUsage)) {
-                console.log(line);
-              }
-            } else {
-              console.log('Usage info unavailable for the current account.');
-            }
-            console.log('');
             console.log('Available Claude accounts:');
             for (const line of formatAccountSummary(getDisplayAccounts(store, config.oauthAccount))) {
               console.log(line);
@@ -603,8 +594,6 @@ function main() {
               console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
               return;
             }
-            console.log(`Usage info unavailable: ${err.message}`);
-            console.log('');
             console.log('Available Claude accounts:');
             for (const line of formatAccountSummary(getDisplayAccounts(store, config.oauthAccount))) {
               console.log(line);
