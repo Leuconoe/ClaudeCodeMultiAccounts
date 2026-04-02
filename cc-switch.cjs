@@ -59,19 +59,14 @@ function setRateLimitResetAt(retryAfterSecs) {
   writeSettings(s);
 }
 
-function getRateLimitResetAt() {
-  const s = readSettings();
-  if (s.rateLimitResetAt) {
-    const resetTime = new Date(s.rateLimitResetAt).getTime();
-    if (resetTime > Date.now()) return resetTime;
+function setRateLimitResetAtFromIso(isoString) {
+  if (!isoString) return;
+  const resetTime = new Date(isoString).getTime();
+  if (!Number.isNaN(resetTime) && resetTime > Date.now()) {
+    const s = readSettings();
+    s.rateLimitResetAt = new Date(resetTime).toISOString();
+    writeSettings(s);
   }
-  return null;
-}
-
-function setRateLimitResetAt(retryAfterSecs) {
-  const s = readSettings();
-  s.rateLimitResetAt = new Date(Date.now() + retryAfterSecs * 1000).toISOString();
-  writeSettings(s);
 }
 
 function parseArgs(argv) {
@@ -318,6 +313,11 @@ function formatResetEstimate(isoString, accountKey) {
     const diff = rateLimitReset - Date.now();
     if (diff > 0) {
       const hours = Math.floor(diff / (1000 * 60 * 60));
+      if (hours >= 24) {
+        const days = Math.floor(hours / 24);
+        const remainingHours = hours % 24;
+        return `~${days}d ${remainingHours}h`;
+      }
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
       if (hours > 0) return `~${hours}h ${minutes}m`;
@@ -342,7 +342,9 @@ function fetchUsage(accessToken) {
     const req = https.get('https://api.anthropic.com/api/oauth/usage', {
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        'anthropic-beta': 'oauth-2025-04-20',
         'anthropic-version': '2023-06-01',
+        'User-Agent': 'claude-cli/claude-code-multi-accounts',
       },
     }, (res) => {
       let data = '';
@@ -359,7 +361,11 @@ function fetchUsage(accessToken) {
           return;
         }
         try {
-          resolve(JSON.parse(data));
+          const parsed = JSON.parse(data);
+          if (parsed && parsed.seven_day && parsed.seven_day.resets_at) {
+            setRateLimitResetAtFromIso(parsed.seven_day.resets_at);
+          }
+          resolve(parsed);
         } catch (e) {
           reject(new Error(`Failed to parse usage response: ${data}`));
         }
@@ -392,12 +398,12 @@ function formatUsageInfo(usage) {
   if (usage.five_hour) {
     const pct = typeof usage.five_hour.utilization === 'number' ? usage.five_hour.utilization.toFixed(1) : 'N/A';
     const resetsAt = usage.five_hour.resets_at ? new Date(usage.five_hour.resets_at).toLocaleString() : 'unknown';
-    lines.push(`5-hour window: ${pct}% used | resets: ${resetsAt}`);
+    lines.push(`5h used/reset: ${pct}% / ${resetsAt}`);
   }
   if (usage.seven_day) {
     const pct = typeof usage.seven_day.utilization === 'number' ? usage.seven_day.utilization.toFixed(1) : 'N/A';
     const resetsAt = usage.seven_day.resets_at ? new Date(usage.seven_day.resets_at).toLocaleString() : 'unknown';
-    lines.push(`7-day window: ${pct}% used | resets: ${resetsAt}`);
+    lines.push(`7d used/reset: ${pct}% / ${resetsAt}`);
   }
   if (lines.length === 0) {
     lines.push('No usage data available for this account.');
@@ -478,13 +484,11 @@ function main() {
         const accessToken = credentials?.claudeAiOauth?.accessToken;
         if (accessToken) {
           return fetchUsage(accessToken).then((usage) => {
-            if (usage.rate_limited) {
-              console.log('--- Usage ---');
-              for (const line of formatUsageInfo(usage)) {
-                console.log(line);
-              }
-              console.log('');
+            console.log('--- Usage ---');
+            for (const line of formatUsageInfo(usage)) {
+              console.log(line);
             }
+            console.log('');
             console.log('Available Claude accounts:');
             for (const line of formatAccountSummary(getDisplayAccounts(store, config.oauthAccount))) {
               console.log(line);
