@@ -630,6 +630,8 @@ function main() {
     const currentPlan = inferPlanType(selected);
     console.log(`Switched active account to [${selected.index}] ${getPreferredDisplayName(selected.metadata)} <${selected.metadata.emailAddress}> (${currentPlan}).`);
     console.log('');
+    console.log('Note: Restart Claude Code to apply the account change.');
+    console.log('');
     console.log('Stored account list:');
     for (const line of formatAccountSummary(currentAccounts)) {
       console.log(line);
