@@ -260,6 +260,7 @@ function syncStoreFromLive(store, config, credentials) {
     capturedAt: now,
     lastSyncedAt: now,
     lastUsedAt: existingEntry?.lastUsedAt || undefined,
+    usageSnapshot: existingEntry?.usageSnapshot || undefined,
   };
 
   const nextStore = normalizeStore(deepCopy(store));
@@ -411,6 +412,40 @@ function formatUsageInfo(usage) {
   return lines;
 }
 
+function formatUsagePercent(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '?';
+  return `${Math.round(value)}%`;
+}
+
+function formatDurationUntil(dateLike) {
+  if (!dateLike) return 'unknown';
+  const resetAt = new Date(dateLike).getTime();
+  if (Number.isNaN(resetAt)) return 'unknown';
+  const diff = resetAt - Date.now();
+  if (diff <= 0) return 'now';
+  const totalHours = Math.floor(diff / (1000 * 60 * 60));
+  if (totalHours >= 24) {
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    return `${days}D ${hours}h`;
+  }
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  return `~${totalHours}h ${minutes}min`;
+}
+
+function getUsageColumns(entry) {
+  const usage = entry.usageSnapshot || {};
+  const rateLimitReset = entry.current ? getRateLimitResetAt() : null;
+
+  const fiveHourPct = formatUsagePercent(usage.five_hour?.utilization);
+  const fiveHourReset = formatDurationUntil(usage.five_hour?.resets_at);
+
+  const sevenDayPct = formatUsagePercent(usage.seven_day?.utilization);
+  const sevenDayReset = formatDurationUntil(rateLimitReset || usage.seven_day?.resets_at);
+
+  return `5H:${fiveHourPct}(${fiveHourReset}) | 7D:${sevenDayPct} (${sevenDayReset})`;
+}
+
 function formatAccountSummary(accounts) {
   return accounts.map((entry) => {
     const marker = entry.current ? '*' : ' ';
@@ -420,9 +455,8 @@ function formatAccountSummary(accounts) {
     const org = metadata.organizationName && String(metadata.organizationName).trim() ? metadata.organizationName : '(no organization)';
     const plan = inferPlanType(entry);
     const lastSynced = formatRelativeTime(entry.lastSyncedAt);
-    const lastUsed = formatRelativeTime(entry.lastUsedAt);
-    const resetEst = formatResetEstimate(entry.lastSyncedAt, entry.current ? entry.key : null);
-    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan} | synced: ${lastSynced} | used: ${lastUsed} | reset: ${resetEst}`;
+    const usageColumns = getUsageColumns(entry);
+    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan} | ${usageColumns} | synced: ${lastSynced}`;
   });
 }
 
@@ -484,6 +518,24 @@ function main() {
         const accessToken = credentials?.claudeAiOauth?.accessToken;
         if (accessToken) {
           return fetchUsage(accessToken).then((usage) => {
+            if (!usage.rate_limited) {
+              const currentKey = getAccountKey(config.oauthAccount);
+              const currentIndex = store.accounts.findIndex((e) => e.key === currentKey);
+              if (currentIndex >= 0) {
+                store.accounts[currentIndex].usageSnapshot = {
+                  five_hour: usage.five_hour ? {
+                    utilization: usage.five_hour.utilization,
+                    resets_at: usage.five_hour.resets_at,
+                  } : undefined,
+                  seven_day: usage.seven_day ? {
+                    utilization: usage.seven_day.utilization,
+                    resets_at: usage.seven_day.resets_at,
+                  } : undefined,
+                  fetchedAt: new Date().toISOString(),
+                };
+                writeStore(store, options);
+              }
+            }
             console.log('--- Usage ---');
             for (const line of formatUsageInfo(usage)) {
               console.log(line);
