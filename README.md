@@ -146,8 +146,6 @@ Behavior notes:
 - The displayed plan type is a best-effort inference from the available account fields and credential snapshot.
 - The `reset:` column shows rate limit countdown for the current account, or a 7-day window estimate for others.
 - Usage info from the Claude API is shown before the account list when rate limited.
-- The `reset:` column shows rate limit countdown for the current account, or a 7-day window estimate for others.
-- Usage info from the Claude API is shown before the account list when rate limited.
 
 Warnings:
 - This is a local workaround, not an official Claude plugin.
@@ -159,3 +157,13 @@ After this:
 - npm / `npx` release refresh for `v0.2.3`
 - non-AI hook execution path for `/cc-switch` if Claude exposes a direct command hook in the future
 - improve plan type detection beyond the current best-effort inference
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=Leuconoe%2FClaudeCodeMultiAccounts&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=Leuconoe/ClaudeCodeMultiAccounts&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=Leuconoe/ClaudeCodeMultiAccounts&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=Leuconoe/ClaudeCodeMultiAccounts&type=date&legend=top-left" />
+ </picture>
+</a>
