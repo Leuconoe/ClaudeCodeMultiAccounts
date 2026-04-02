@@ -25,16 +25,28 @@ Prerequisites:
 
 Install:
 
-```powershell
-./install.cmd
-```
-
-```bash
-./install.sh
-```
+**Recommended (via npm):**
 
 ```bash
 npx claude-code-multi-accounts install
+```
+
+**Manual (from source):**
+
+```bash
+git clone https://github.com/Leuconoe/ClaudeCodeMultiAccounts.git
+cd ClaudeCodeMultiAccounts
+./install.cmd   # Windows
+./install.sh    # macOS / Linux / WSL
+```
+
+**Manual (from source):**
+
+```bash
+git clone https://github.com/Leuconoe/ClaudeCodeMultiAccounts.git
+cd ClaudeCodeMultiAccounts
+./install.cmd   # Windows
+./install.sh    # macOS / Linux / WSL
 ```
 
 What install does:
@@ -49,16 +61,30 @@ What install does:
 
 Uninstall:
 
-```powershell
-./uninstall.cmd
-```
-
-```bash
-./uninstall.sh
-```
+**Recommended (via npm):**
 
 ```bash
 npx claude-code-multi-accounts uninstall
+```
+
+**Manual (from source):**
+
+```powershell
+./uninstall.cmd   # Windows
+```
+
+```bash
+./uninstall.sh    # macOS / Linux / WSL
+```
+
+**Manual (from source):**
+
+```powershell
+./uninstall.cmd   # Windows
+```
+
+```bash
+./uninstall.sh    # macOS / Linux / WSL
 ```
 
 Usage:
