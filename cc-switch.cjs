@@ -79,7 +79,8 @@ function parseArgs(argv) {
     backupDir: getDefaultBackupDir(),
     syncOnly: false,
     usageOnly: false,
-    showUsage: settings.showUsage !== false,
+    removeOnly: false,
+    removeIndex: null,
     selector: '',
   };
 
@@ -114,6 +115,10 @@ function parseArgs(argv) {
       options.usageOnly = true;
       continue;
     }
+    if (current === '--remove' || current === 'remove') {
+      options.removeOnly = true;
+      continue;
+    }
     if (current === '--show-usage') {
       options.showUsage = true;
       const s = readSettings();
@@ -129,6 +134,13 @@ function parseArgs(argv) {
       writeSettings(s);
       console.log('Usage display disabled.');
       return options;
+    }
+    if (options.removeOnly && !options.removeIndex) {
+      const numeric = Number.parseInt(current, 10);
+      if (!Number.isNaN(numeric) && String(numeric) === current) {
+        options.removeIndex = numeric;
+        continue;
+      }
     }
     if (!options.selector) {
       options.selector = current;
@@ -561,6 +573,25 @@ function main() {
       return;
     }
 
+    if (options.removeOnly) {
+      if (typeof options.removeIndex !== 'number' || options.removeIndex < 0 || options.removeIndex >= existingStore.accounts.length) {
+        throw new Error(`Invalid account index. Use an index between 0 and ${existingStore.accounts.length - 1}.`);
+      }
+      const removed = existingStore.accounts.splice(options.removeIndex, 1)[0];
+      existingStore.accounts.forEach((entry, i) => { entry.index = i; });
+      writeStore(existingStore, options);
+      const name = getPreferredDisplayName(removed.metadata || {});
+      const email = (removed.metadata && removed.metadata.emailAddress) || '(no email)';
+      console.log(`Removed account: [${options.removeIndex}] ${name} <${email}>`);
+      console.log('');
+      console.log('Remaining accounts:');
+      for (const entry of existingStore.accounts) {
+        const m = entry.metadata || {};
+        console.log(`  [${entry.index}] ${getPreferredDisplayName(m)} <${m.emailAddress || '(no email)'}>`);
+      }
+      return;
+    }
+
     const synced = syncStoreFromLive(existingStore, config, credentials);
     const store = synced.store;
     const accounts = getDisplayAccounts(store, config.oauthAccount);
@@ -591,7 +622,8 @@ function main() {
                 console.log(line);
               }
               console.log('');
-              console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
+            console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
+            console.log(`Run ${options.usageCommand} --remove <index> to remove a stored account.`);
               return;
             }
             console.log('Available Claude accounts:');
@@ -610,6 +642,7 @@ function main() {
       }
       console.log('');
       console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
+      console.log(`Run ${options.usageCommand} --remove <index> to remove a stored account.`);
       return;
     }
 
