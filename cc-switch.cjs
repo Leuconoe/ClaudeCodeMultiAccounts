@@ -4,25 +4,33 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const https = require('https');
+const storeIo = require('./lib/store/io.cjs');
+const storeAccounts = require('./lib/store/accounts.cjs');
+
+const {
+  getDefaultConfigPath,
+  getDefaultCredentialsPath,
+  getDefaultStorePath,
+  getDefaultBackupDir,
+  ensureDir,
+  readJson,
+  readJsonIfExists,
+  deepCopy,
+  writeLiveState,
+  writeStore,
+} = storeIo;
+
+const {
+  getAccountKey,
+  normalizeStore,
+  getDisplayAccounts,
+  syncStoreFromLive,
+  findSelection,
+  removeStoredAccount,
+} = storeAccounts;
 
 const STORE_VERSION = '0.2.2';
 const RESET_WINDOW_DAYS = 7;
-
-function getDefaultConfigPath() {
-  return path.join(os.homedir(), '.claude.json');
-}
-
-function getDefaultCredentialsPath() {
-  return path.join(os.homedir(), '.claude', '.credentials.json');
-}
-
-function getDefaultStorePath() {
-  return path.join(os.homedir(), '.ClaudeCodeMultiAccounts.json');
-}
-
-function getDefaultBackupDir() {
-  return path.join(os.homedir(), '.claude', 'backups', 'multi-account-switch');
-}
 
 function getDefaultConfigDir() {
   return path.join(os.homedir(), '.claude', 'multi-account-switch');
@@ -35,7 +43,11 @@ function getSettingsPath() {
 function readSettings() {
   const p = getSettingsPath();
   if (!fs.existsSync(p)) return { showUsage: true };
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return { showUsage: true }; }
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return { showUsage: true };
+  }
 }
 
 function writeSettings(s) {
@@ -136,7 +148,7 @@ function parseArgs(argv) {
       console.log('Usage display disabled.');
       return options;
     }
-    if (options.removeOnly && !options.removeIndex) {
+    if (options.removeOnly && options.removeIndex === null) {
       const numeric = Number.parseInt(current, 10);
       if (!Number.isNaN(numeric) && String(numeric) === current) {
         options.removeIndex = numeric;
@@ -150,45 +162,6 @@ function parseArgs(argv) {
   }
 
   return options;
-}
-
-function ensureDir(dirPath) {
-  fs.mkdirSync(dirPath, { recursive: true });
-}
-
-function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
-
-function readJsonIfExists(filePath, fallback) {
-  if (!fs.existsSync(filePath)) return fallback;
-  return readJson(filePath);
-}
-
-function writeJson(filePath, value) {
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-}
-
-function backupFile(filePath, backupDir) {
-  if (!fs.existsSync(filePath)) return;
-  ensureDir(backupDir);
-  const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
-  fs.copyFileSync(filePath, path.join(backupDir, `${path.basename(filePath)}.${timestamp}.bak`));
-}
-
-function deepCopy(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function getAccountKey(account) {
-  if (account?.accountUuid && String(account.accountUuid).trim()) {
-    return `uuid:${String(account.accountUuid).trim().toLowerCase()}`;
-  }
-  if (account?.emailAddress && String(account.emailAddress).trim()) {
-    return `email:${String(account.emailAddress).trim().toLowerCase()}`;
-  }
-  throw new Error('Account entry is missing both accountUuid and emailAddress.');
 }
 
 function isSuspiciousDisplayName(value) {
@@ -217,95 +190,14 @@ function inferPlanType(entry) {
   const credential = entry.credentials?.claudeAiOauth || {};
   const subscriptionType = credential.subscriptionType;
 
-  if (subscriptionType === 'team') {
-    return 'Teams';
-  }
-  if (subscriptionType === 'enterprise') {
-    return 'Enterprise';
-  }
+  if (subscriptionType === 'team') return 'Teams';
+  if (subscriptionType === 'enterprise') return 'Enterprise';
 
   const hasOrgScope = Boolean(metadata.organizationRole) || Boolean(metadata.workspaceRole);
-  if (hasOrgScope) {
-    return metadata.billingType === 'stripe_subscription' ? 'Teams' : 'Enterprise';
-  }
-  if (metadata.hasExtraUsageEnabled === true) {
-    return 'Max';
-  }
-  if (metadata.billingType === 'stripe_subscription') {
-    return 'Pro';
-  }
+  if (hasOrgScope) return metadata.billingType === 'stripe_subscription' ? 'Teams' : 'Enterprise';
+  if (metadata.hasExtraUsageEnabled === true) return 'Max';
+  if (metadata.billingType === 'stripe_subscription') return 'Pro';
   return 'Unknown';
-}
-
-function normalizeStore(store) {
-  const normalized = store && typeof store === 'object' ? store : {};
-  if (!Array.isArray(normalized.accounts)) {
-    normalized.accounts = [];
-  }
-  normalized.version = STORE_VERSION;
-  return normalized;
-}
-
-function getDisplayAccounts(store, currentMetadata) {
-  const currentKey = currentMetadata ? getAccountKey(currentMetadata) : null;
-  return store.accounts.map((entry, index) => ({
-    ...entry,
-    index,
-    current: currentKey && getAccountKey(entry.metadata) === currentKey,
-  }));
-}
-
-function syncStoreFromLive(store, config, credentials) {
-  if (!config?.oauthAccount) {
-    throw new Error('The Claude config does not contain oauthAccount.');
-  }
-  if (!credentials?.claudeAiOauth) {
-    throw new Error('The Claude credentials file does not contain claudeAiOauth.');
-  }
-
-  const key = getAccountKey(config.oauthAccount);
-  const now = new Date().toISOString();
-  const existingEntry = store.accounts?.find((e) => e.key === key);
-  const snapshot = {
-    key,
-    metadata: deepCopy(config.oauthAccount),
-    credentials: deepCopy(credentials),
-    capturedAt: now,
-    lastSyncedAt: now,
-    lastUsedAt: existingEntry?.lastUsedAt || undefined,
-    usageSnapshot: existingEntry?.usageSnapshot || undefined,
-  };
-
-  const nextStore = normalizeStore(deepCopy(store));
-  const existingIndex = nextStore.accounts.findIndex((entry) => entry.key === key);
-  if (existingIndex >= 0) {
-    nextStore.accounts[existingIndex] = snapshot;
-  } else {
-    nextStore.accounts.push(snapshot);
-  }
-
-  nextStore.updatedAt = new Date().toISOString();
-
-  return {
-    changed: JSON.stringify(store) !== JSON.stringify(nextStore),
-    store: nextStore,
-    key,
-  };
-}
-
-function findSelection(accounts, selector) {
-  const trimmed = selector.trim();
-  if (!trimmed) {
-    throw new Error('Selector cannot be empty.');
-  }
-
-  const numeric = Number.parseInt(trimmed, 10);
-  if (!Number.isNaN(numeric) && String(numeric) === trimmed) {
-    const byIndex = accounts.find((entry) => Number(entry.index) === numeric);
-    if (byIndex) return byIndex;
-  }
-
-  throw new Error(`No account matched index '${trimmed}'. Use a numeric index.`);
 }
 
 function formatRelativeTime(isoString) {
@@ -317,8 +209,7 @@ function formatRelativeTime(isoString) {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function formatResetEstimate(isoString, accountKey) {
@@ -326,25 +217,25 @@ function formatResetEstimate(isoString, accountKey) {
   if (rateLimitReset && accountKey) {
     const diff = rateLimitReset - Date.now();
     if (diff > 0) {
-      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const hours = Math.floor(diff / 3600000);
       if (hours >= 24) {
         const days = Math.floor(hours / 24);
         const remainingHours = hours % 24;
         return `~${days}d ${remainingHours}h`;
       }
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      const minutes = Math.floor((diff % 3600000) / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
       if (hours > 0) return `~${hours}h ${minutes}m`;
       if (minutes > 0) return `~${minutes}m ${seconds}s`;
       return `~${seconds}s`;
     }
   }
+
   if (!isoString) return 'unknown';
-  const resetDate = new Date(new Date(isoString).getTime() + RESET_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-  const now = new Date();
-  const diff = resetDate.getTime() - now.getTime();
+  const resetDate = new Date(new Date(isoString).getTime() + RESET_WINDOW_DAYS * 86400000);
+  const diff = resetDate.getTime() - Date.now();
   if (diff <= 0) return 'reset now';
-  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const hours = Math.floor(diff / 3600000);
   if (hours < 24) return `~${hours}h`;
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
@@ -376,17 +267,20 @@ function fetchUsage(accessToken) {
         }
         try {
           const parsed = JSON.parse(data);
-          if (parsed && parsed.seven_day && parsed.seven_day.resets_at) {
+          if (parsed?.seven_day?.resets_at) {
             setRateLimitResetAtFromIso(parsed.seven_day.resets_at);
           }
           resolve(parsed);
-        } catch (e) {
+        } catch {
           reject(new Error(`Failed to parse usage response: ${data}`));
         }
       });
     });
     req.on('error', reject);
-    req.setTimeout(10000, () => { req.destroy(); reject(new Error('Usage API timeout')); });
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('Usage API timeout'));
+    });
   });
 }
 
@@ -446,32 +340,28 @@ function toUsageSnapshot(usage) {
 async function refreshStoredUsageSnapshots(store, currentKey) {
   let currentUsage = null;
   let changed = false;
-
   const currentEntry = store.accounts.find((e) => e.key === currentKey);
-  if (currentEntry) {
-    const accessToken = currentEntry.credentials?.claudeAiOauth?.accessToken;
-    if (accessToken) {
-      try {
-        const usage = await fetchUsage(accessToken);
-        currentUsage = usage;
-        const nextSnapshot = toUsageSnapshot(usage);
-        if (nextSnapshot) {
-          const idx = store.accounts.findIndex((e) => e.key === currentKey);
-          if (idx >= 0) {
-            const before = JSON.stringify(store.accounts[idx].usageSnapshot || null);
-            const after = JSON.stringify(nextSnapshot);
-            if (before !== after) {
-              store.accounts[idx].usageSnapshot = nextSnapshot;
-              changed = true;
-            }
-          }
+  if (!currentEntry) return { currentUsage, changed };
+  const accessToken = currentEntry.credentials?.claudeAiOauth?.accessToken;
+  if (!accessToken) return { currentUsage, changed };
+  try {
+    const usage = await fetchUsage(accessToken);
+    currentUsage = usage;
+    const nextSnapshot = toUsageSnapshot(usage);
+    if (nextSnapshot) {
+      const idx = store.accounts.findIndex((e) => e.key === currentKey);
+      if (idx >= 0) {
+        const before = JSON.stringify(store.accounts[idx].usageSnapshot || null);
+        const after = JSON.stringify(nextSnapshot);
+        if (before !== after) {
+          store.accounts[idx].usageSnapshot = nextSnapshot;
+          changed = true;
         }
-      } catch {
-        // Keep the previous snapshot if this refresh fails.
       }
     }
+  } catch {
+    // Keep previous snapshot on failure.
   }
-
   return { currentUsage, changed };
 }
 
@@ -486,26 +376,23 @@ function formatDurationUntil(dateLike) {
   if (Number.isNaN(resetAt)) return 'unknown';
   const diff = resetAt - Date.now();
   if (diff <= 0) return 'now';
-  const totalHours = Math.floor(diff / (1000 * 60 * 60));
+  const totalHours = Math.floor(diff / 3600000);
   if (totalHours >= 24) {
     const days = Math.floor(totalHours / 24);
     const hours = totalHours % 24;
     return `${days}D ${hours}h`;
   }
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const minutes = Math.floor((diff % 3600000) / 60000);
   return `~${totalHours}h ${minutes}min`;
 }
 
 function getUsageColumns(entry) {
   const usage = entry.usageSnapshot || {};
   const rateLimitReset = entry.current ? getRateLimitResetAt() : null;
-
   const fiveHourPct = formatUsagePercent(usage.five_hour?.utilization);
   const fiveHourReset = formatDurationUntil(usage.five_hour?.resets_at);
-
   const sevenDayPct = formatUsagePercent(usage.seven_day?.utilization);
   const sevenDayReset = formatDurationUntil(rateLimitReset || usage.seven_day?.resets_at);
-
   return `5H:${fiveHourPct}(${fiveHourReset}) | 7D:${sevenDayPct} (${sevenDayReset})`;
 }
 
@@ -523,25 +410,13 @@ function formatAccountSummary(accounts) {
   });
 }
 
-function writeLiveState(config, credentials, options) {
-  backupFile(options.configPath, options.backupDir);
-  backupFile(options.credentialsPath, options.backupDir);
-  writeJson(options.configPath, config);
-  writeJson(options.credentialsPath, credentials);
-}
-
-function writeStore(store, options) {
-  backupFile(options.storePath, options.backupDir);
-  writeJson(options.storePath, store);
-}
-
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
 
   try {
     const config = readJson(options.configPath);
     const credentials = readJson(options.credentialsPath);
-    const existingStore = normalizeStore(readJsonIfExists(options.storePath, { version: STORE_VERSION, accounts: [] }));
+    const existingStore = normalizeStore(readJsonIfExists(options.storePath, { version: STORE_VERSION, accounts: [] }), STORE_VERSION);
 
     if (options.usageOnly) {
       const accessToken = credentials?.claudeAiOauth?.accessToken;
@@ -549,15 +424,15 @@ function main() {
         throw new Error('No access token found in credentials file.');
       }
       console.log('Fetching usage from Claude API...');
-      return fetchUsage(accessToken).then((usage) => {
-        for (const line of formatUsageInfo(usage)) {
-          console.log(line);
-        }
-      });
+      const usage = await fetchUsage(accessToken);
+      for (const line of formatUsageInfo(usage)) {
+        console.log(line);
+      }
+      return;
     }
 
     if (options.syncOnly) {
-      const result = syncStoreFromLive(existingStore, config, credentials);
+      const result = syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
       if (result.changed) {
         writeStore(result.store, options);
         console.log(`Synced current account into ${path.basename(options.storePath)}.`);
@@ -568,11 +443,7 @@ function main() {
     }
 
     if (options.removeOnly) {
-      if (typeof options.removeIndex !== 'number' || options.removeIndex < 0 || options.removeIndex >= existingStore.accounts.length) {
-        throw new Error(`Invalid account index. Use an index between 0 and ${existingStore.accounts.length - 1}.`);
-      }
-      const removed = existingStore.accounts.splice(options.removeIndex, 1)[0];
-      existingStore.accounts.forEach((entry, i) => { entry.index = i; });
+      const removed = removeStoredAccount(existingStore, options.removeIndex);
       writeStore(existingStore, options);
       const name = getPreferredDisplayName(removed.metadata || {});
       const email = (removed.metadata && removed.metadata.emailAddress) || '(no email)';
@@ -586,7 +457,7 @@ function main() {
       return;
     }
 
-    const synced = syncStoreFromLive(existingStore, config, credentials);
+    const synced = syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
     const store = synced.store;
     const accounts = getDisplayAccounts(store, config.oauthAccount);
 
@@ -596,11 +467,10 @@ function main() {
         console.log(`Saved the current account snapshot into ${path.basename(options.storePath)} before showing the account list.`);
       }
 
-      // Always refresh current account usage, regardless of showUsage setting.
-      // showUsage only controls whether the detailed usage block is printed.
       const accessToken = credentials?.claudeAiOauth?.accessToken;
       if (accessToken) {
-        return refreshStoredUsageSnapshots(store, getAccountKey(config.oauthAccount)).then(({ currentUsage, changed }) => {
+        try {
+          const { currentUsage, changed } = await refreshStoredUsageSnapshots(store, getAccountKey(config.oauthAccount));
           if (changed) {
             writeStore(store, options);
           }
@@ -618,18 +488,10 @@ function main() {
           console.log('');
           console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
           console.log(`Run ${options.usageCommand} --remove <index> to remove a stored account.`);
-        }).catch((err) => {
-          if (err.message && err.message.includes('401')) {
-            // Silently ignore 401 errors.
-          }
-          console.log('Available Claude accounts:');
-          for (const line of formatAccountSummary(getDisplayAccounts(store, config.oauthAccount))) {
-            console.log(line);
-          }
-          console.log('');
-          console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
-          console.log(`Run ${options.usageCommand} --remove <index> to remove a stored account.`);
-        });
+          return;
+        } catch {
+          // Ignore usage refresh failures and render cached values.
+        }
       }
 
       console.log('Available Claude accounts:');
