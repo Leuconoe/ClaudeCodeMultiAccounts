@@ -8,6 +8,9 @@ const storeAccounts = require('./lib/store/accounts.cjs');
 const usageCache = require('./lib/usage/cache.cjs');
 const usageFetch = require('./lib/usage/fetch.cjs');
 const usageFormat = require('./lib/usage/format.cjs');
+const outputAccounts = require('./lib/output/accounts.cjs');
+const outputUsage = require('./lib/output/usage.cjs');
+const outputMessages = require('./lib/output/messages.cjs');
 
 const {
   getDefaultConfigPath,
@@ -45,6 +48,18 @@ const fetchUsageApi = usageFetch.fetchUsage;
 const formatUsageInfoUi = usageFormat.formatUsageInfo;
 const refreshStoredUsageSnapshotsUi = usageFormat.refreshStoredUsageSnapshots;
 const getUsageColumnsUi = usageFormat.getUsageColumns;
+
+const getPreferredDisplayNameUi = outputAccounts.getPreferredDisplayName;
+const inferPlanTypeUi = outputAccounts.inferPlanType;
+const formatAccountSummaryUi = outputAccounts.formatAccountSummary;
+
+const formatRelativeTimeUi = outputUsage.formatRelativeTime;
+
+const getListGuidance = outputMessages.getListGuidance;
+const getRestartNotice = outputMessages.getRestartNotice;
+const getAvailableAccountsHeading = outputMessages.getAvailableAccountsHeading;
+const getStoredAccountsHeading = outputMessages.getStoredAccountsHeading;
+const getRemainingAccountsHeading = outputMessages.getRemainingAccountsHeading;
 
 const STORE_VERSION = '0.2.2';
 const RESET_WINDOW_DAYS = 7;
@@ -365,16 +380,9 @@ function getUsageColumns(entry) {
 }
 
 function formatAccountSummary(accounts) {
-  return accounts.map((entry) => {
-    const marker = entry.current ? '*' : ' ';
-    const metadata = entry.metadata || {};
-    const displayName = getPreferredDisplayName(metadata);
-    const email = metadata.emailAddress && String(metadata.emailAddress).trim() ? metadata.emailAddress : '(no email)';
-    const org = metadata.organizationName && String(metadata.organizationName).trim() ? metadata.organizationName : '(no organization)';
-    const plan = inferPlanType(entry);
-    const lastSynced = formatRelativeTime(entry.lastSyncedAt);
-    const usageColumns = getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS);
-    return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan} | ${usageColumns} | synced: ${lastSynced}`;
+  return formatAccountSummaryUi(accounts, {
+    formatRelativeTime: formatRelativeTimeUi,
+    getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt),
   });
 }
 
@@ -413,14 +421,14 @@ async function main() {
     if (options.removeOnly) {
       const removed = removeStoredAccount(existingStore, options.removeIndex);
       writeStore(existingStore, options);
-      const name = getPreferredDisplayName(removed.metadata || {});
+      const name = getPreferredDisplayNameUi(removed.metadata || {});
       const email = (removed.metadata && removed.metadata.emailAddress) || '(no email)';
       console.log(`Removed account: [${options.removeIndex}] ${name} <${email}>`);
       console.log('');
-      console.log('Remaining accounts:');
+      console.log(getRemainingAccountsHeading());
       for (const entry of existingStore.accounts) {
         const m = entry.metadata || {};
-        console.log(`  [${entry.index}] ${getPreferredDisplayName(m)} <${m.emailAddress || '(no email)'}>`);
+        console.log(`  [${entry.index}] ${getPreferredDisplayNameUi(m)} <${m.emailAddress || '(no email)'}>`);
       }
       return;
     }
@@ -449,26 +457,28 @@ async function main() {
             }
             console.log('');
           }
-          console.log('Available Claude accounts:');
+          console.log(getAvailableAccountsHeading());
           for (const line of formatAccountSummary(getDisplayAccounts(store, config.oauthAccount))) {
             console.log(line);
           }
           console.log('');
-          console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
-          console.log(`Run ${options.usageCommand} --remove <index> to remove a stored account.`);
+          for (const line of getListGuidance(options.usageCommand)) {
+            console.log(line);
+          }
           return;
         } catch {
           // Ignore usage refresh failures and render cached values.
         }
       }
 
-      console.log('Available Claude accounts:');
+      console.log(getAvailableAccountsHeading());
       for (const line of formatAccountSummary(accounts)) {
         console.log(line);
       }
       console.log('');
-      console.log(`Run ${options.usageCommand} <index> to make one of these stored entries the active Claude account.`);
-      console.log(`Run ${options.usageCommand} --remove <index> to remove a stored account.`);
+      for (const line of getListGuidance(options.usageCommand)) {
+        console.log(line);
+      }
       return;
     }
 
@@ -486,12 +496,12 @@ async function main() {
     writeStore(store, options);
 
     const currentAccounts = getDisplayAccounts(store, selected.metadata);
-    const currentPlan = inferPlanType(selected);
-    console.log(`Switched active account to [${selected.index}] ${getPreferredDisplayName(selected.metadata)} <${selected.metadata.emailAddress}> (${currentPlan}).`);
+    const currentPlan = inferPlanTypeUi(selected);
+    console.log(`Switched active account to [${selected.index}] ${getPreferredDisplayNameUi(selected.metadata)} <${selected.metadata.emailAddress}> (${currentPlan}).`);
     console.log('');
-    console.log('Note: Restart Claude Code to apply the account change.');
+    console.log(getRestartNotice());
     console.log('');
-    console.log('Stored account list:');
+    console.log(getStoredAccountsHeading());
     for (const line of formatAccountSummary(currentAccounts)) {
       console.log(line);
     }
