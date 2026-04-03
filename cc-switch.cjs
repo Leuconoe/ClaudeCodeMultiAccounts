@@ -3,9 +3,11 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const https = require('https');
 const storeIo = require('./lib/store/io.cjs');
 const storeAccounts = require('./lib/store/accounts.cjs');
+const usageCache = require('./lib/usage/cache.cjs');
+const usageFetch = require('./lib/usage/fetch.cjs');
+const usageFormat = require('./lib/usage/format.cjs');
 
 const {
   getDefaultConfigPath,
@@ -29,57 +31,23 @@ const {
   removeStoredAccount,
 } = storeAccounts;
 
+const {
+  getSettingsPath,
+  readSettings,
+  writeSettings,
+  getRateLimitResetAt,
+  setRateLimitResetAt,
+  setRateLimitResetAtFromIso,
+} = usageCache;
+
+const fetchUsageApi = usageFetch.fetchUsage;
+
+const formatUsageInfoUi = usageFormat.formatUsageInfo;
+const refreshStoredUsageSnapshotsUi = usageFormat.refreshStoredUsageSnapshots;
+const getUsageColumnsUi = usageFormat.getUsageColumns;
+
 const STORE_VERSION = '0.2.2';
 const RESET_WINDOW_DAYS = 7;
-
-function getDefaultConfigDir() {
-  return path.join(os.homedir(), '.claude', 'multi-account-switch');
-}
-
-function getSettingsPath() {
-  return path.join(getDefaultConfigDir(), 'settings.json');
-}
-
-function readSettings() {
-  const p = getSettingsPath();
-  if (!fs.existsSync(p)) return { showUsage: true };
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
-  } catch {
-    return { showUsage: true };
-  }
-}
-
-function writeSettings(s) {
-  const p = getSettingsPath();
-  ensureDir(path.dirname(p));
-  fs.writeFileSync(p, JSON.stringify(s, null, 2) + '\n', 'utf8');
-}
-
-function getRateLimitResetAt() {
-  const s = readSettings();
-  if (s.rateLimitResetAt) {
-    const resetTime = new Date(s.rateLimitResetAt).getTime();
-    if (resetTime > Date.now()) return resetTime;
-  }
-  return null;
-}
-
-function setRateLimitResetAt(retryAfterSecs) {
-  const s = readSettings();
-  s.rateLimitResetAt = new Date(Date.now() + retryAfterSecs * 1000).toISOString();
-  writeSettings(s);
-}
-
-function setRateLimitResetAtFromIso(isoString) {
-  if (!isoString) return;
-  const resetTime = new Date(isoString).getTime();
-  if (!Number.isNaN(resetTime) && resetTime > Date.now()) {
-    const s = readSettings();
-    s.rateLimitResetAt = new Date(resetTime).toISOString();
-    writeSettings(s);
-  }
-}
 
 function parseArgs(argv) {
   const settings = readSettings();
@@ -405,7 +373,7 @@ function formatAccountSummary(accounts) {
     const org = metadata.organizationName && String(metadata.organizationName).trim() ? metadata.organizationName : '(no organization)';
     const plan = inferPlanType(entry);
     const lastSynced = formatRelativeTime(entry.lastSyncedAt);
-    const usageColumns = getUsageColumns(entry);
+    const usageColumns = getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS);
     return `${marker} [${entry.index}] ${displayName} <${email}> - ${org} - ${plan} | ${usageColumns} | synced: ${lastSynced}`;
   });
 }
@@ -424,8 +392,8 @@ async function main() {
         throw new Error('No access token found in credentials file.');
       }
       console.log('Fetching usage from Claude API...');
-      const usage = await fetchUsage(accessToken);
-      for (const line of formatUsageInfo(usage)) {
+      const usage = await fetchUsageApi(accessToken, { setRateLimitResetAt: (secs) => setRateLimitResetAt(secs, ensureDir), setRateLimitResetAtFromIso: (iso) => setRateLimitResetAtFromIso(iso, ensureDir) });
+      for (const line of formatUsageInfoUi(usage)) {
         console.log(line);
       }
       return;
@@ -470,13 +438,13 @@ async function main() {
       const accessToken = credentials?.claudeAiOauth?.accessToken;
       if (accessToken) {
         try {
-          const { currentUsage, changed } = await refreshStoredUsageSnapshots(store, getAccountKey(config.oauthAccount));
+          const { currentUsage, changed } = await refreshStoredUsageSnapshotsUi(store, getAccountKey(config.oauthAccount), (token) => fetchUsageApi(token, { setRateLimitResetAt: (secs) => setRateLimitResetAt(secs, ensureDir), setRateLimitResetAtFromIso: (iso) => setRateLimitResetAtFromIso(iso, ensureDir) }));
           if (changed) {
             writeStore(store, options);
           }
           if (options.showUsage && currentUsage) {
             console.log('--- Usage ---');
-            for (const line of formatUsageInfo(currentUsage)) {
+            for (const line of formatUsageInfoUi(currentUsage)) {
               console.log(line);
             }
             console.log('');

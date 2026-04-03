@@ -38,6 +38,7 @@ function installCommands() {
   const installRoot = path.join(home, '.claude', 'multi-account-switch');
   const binDir = path.join(installRoot, 'bin');
   const binLibStoreDir = path.join(binDir, 'lib', 'store');
+  const binLibUsageDir = path.join(binDir, 'lib', 'usage');
   const hooksDir = path.join(installRoot, 'hooks');
   const commandsDir = path.join(home, '.claude', 'commands');
   const userBinDir = process.platform === 'win32' ? path.join(home, 'bin') : path.join(home, '.local', 'bin');
@@ -46,6 +47,9 @@ function installCommands() {
   const cliSource = path.join(repoRoot, 'cc-switch.cjs');
   const storeIoSource = path.join(repoRoot, 'lib', 'store', 'io.cjs');
   const storeAccountsSource = path.join(repoRoot, 'lib', 'store', 'accounts.cjs');
+  const usageCacheSource = path.join(repoRoot, 'lib', 'usage', 'cache.cjs');
+  const usageFetchSource = path.join(repoRoot, 'lib', 'usage', 'fetch.cjs');
+  const usageFormatSource = path.join(repoRoot, 'lib', 'usage', 'format.cjs');
   const sessionStartSource = path.join(repoRoot, 'session-start.cjs');
   const statuslineSource = path.join(repoRoot, 'statusline.cjs');
   const cliTarget = path.join(binDir, 'cc-switch.cjs');
@@ -67,12 +71,16 @@ function installCommands() {
 
   ensureDir(binDir);
   ensureDir(binLibStoreDir);
+  ensureDir(binLibUsageDir);
   ensureDir(hooksDir);
   ensureDir(commandsDir);
   ensureDir(userBinDir);
   fs.copyFileSync(cliSource, cliTarget);
   fs.copyFileSync(storeIoSource, path.join(binLibStoreDir, 'io.cjs'));
   fs.copyFileSync(storeAccountsSource, path.join(binLibStoreDir, 'accounts.cjs'));
+  fs.copyFileSync(usageCacheSource, path.join(binLibUsageDir, 'cache.cjs'));
+  fs.copyFileSync(usageFetchSource, path.join(binLibUsageDir, 'fetch.cjs'));
+  fs.copyFileSync(usageFormatSource, path.join(binLibUsageDir, 'format.cjs'));
   fs.copyFileSync(sessionStartSource, sessionStartTarget);
   fs.copyFileSync(statuslineSource, statuslineTarget);
 
