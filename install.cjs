@@ -40,6 +40,7 @@ function installCommands() {
   const binLibStoreDir = path.join(binDir, 'lib', 'store');
   const binLibUsageDir = path.join(binDir, 'lib', 'usage');
   const binLibOutputDir = path.join(binDir, 'lib', 'output');
+  const binLibActionsDir = path.join(binDir, 'lib', 'actions');
   const hooksDir = path.join(installRoot, 'hooks');
   const commandsDir = path.join(home, '.claude', 'commands');
   const userBinDir = process.platform === 'win32' ? path.join(home, 'bin') : path.join(home, '.local', 'bin');
@@ -54,6 +55,11 @@ function installCommands() {
   const outputAccountsSource = path.join(repoRoot, 'lib', 'output', 'accounts.cjs');
   const outputUsageSource = path.join(repoRoot, 'lib', 'output', 'usage.cjs');
   const outputMessagesSource = path.join(repoRoot, 'lib', 'output', 'messages.cjs');
+  const actionSyncSource = path.join(repoRoot, 'lib', 'actions', 'sync.cjs');
+  const actionUsageSource = path.join(repoRoot, 'lib', 'actions', 'usage.cjs');
+  const actionRemoveSource = path.join(repoRoot, 'lib', 'actions', 'remove.cjs');
+  const actionListSource = path.join(repoRoot, 'lib', 'actions', 'list.cjs');
+  const actionSwitchSource = path.join(repoRoot, 'lib', 'actions', 'switch.cjs');
   const sessionStartSource = path.join(repoRoot, 'session-start.cjs');
   const statuslineSource = path.join(repoRoot, 'statusline.cjs');
   const cliTarget = path.join(binDir, 'cc-switch.cjs');
@@ -77,6 +83,7 @@ function installCommands() {
   ensureDir(binLibStoreDir);
   ensureDir(binLibUsageDir);
   ensureDir(binLibOutputDir);
+  ensureDir(binLibActionsDir);
   ensureDir(hooksDir);
   ensureDir(commandsDir);
   ensureDir(userBinDir);
@@ -89,6 +96,11 @@ function installCommands() {
   fs.copyFileSync(outputAccountsSource, path.join(binLibOutputDir, 'accounts.cjs'));
   fs.copyFileSync(outputUsageSource, path.join(binLibOutputDir, 'usage.cjs'));
   fs.copyFileSync(outputMessagesSource, path.join(binLibOutputDir, 'messages.cjs'));
+  fs.copyFileSync(actionSyncSource, path.join(binLibActionsDir, 'sync.cjs'));
+  fs.copyFileSync(actionUsageSource, path.join(binLibActionsDir, 'usage.cjs'));
+  fs.copyFileSync(actionRemoveSource, path.join(binLibActionsDir, 'remove.cjs'));
+  fs.copyFileSync(actionListSource, path.join(binLibActionsDir, 'list.cjs'));
+  fs.copyFileSync(actionSwitchSource, path.join(binLibActionsDir, 'switch.cjs'));
   fs.copyFileSync(sessionStartSource, sessionStartTarget);
   fs.copyFileSync(statuslineSource, statuslineTarget);
 
