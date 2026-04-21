@@ -84,13 +84,13 @@ Example shell output:
 ```text
 $ cc-switch
 --- Usage ---
-5h used/reset: 22.0% / 2026. 4. 2. 2:00 PM
-7d used/reset: 31.0% / 2026. 4. 7. 10:00 PM
+5h: 78.0% / 2026. 4. 2. 2:00 PM
+7d: 69.0% / 2026. 4. 7. 10:00 PM
 
 Available Claude accounts:
-* [0] Alex Example <alex@example.invalid> - Example Workspace - Pro | 5H:22%(~2h 7min) | 7D:31% (5D 10h) | last used: 19m ago | synced: just now
-  [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams | 5H:?(unknown) | 7D:? (unknown) | last used: 1d ago | synced: never
-  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise | 5H:42%(~1h 10min) | 7D:51% (4D 6h) | last used: 1d ago | synced: 1d ago
+* [0] Alex Example <alex@example.invalid> - Example Workspace - Pro | 5H:78% (~2h 7min) | 7D:69% (5D 10h) | last used: 19m ago
+  [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams | 5H:? (unknown) | 7D:? (unknown) | last used: 1d ago
+  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise | 5H:58% (~1h 10min) | 7D:49% (4D 6h) | last used: 1d ago
 
 Run cc-switch <index> to make one of these stored entries the active Claude account.
 ```
@@ -100,17 +100,16 @@ $ cc-switch 1
 Switched active account to [1] Taylor Example <taylor@example.invalid> (Teams).
 
 Stored account list:
-  [0] Alex Example <alex@example.invalid> - Example Workspace - Pro | 5H:22%(unknown) | 7D:31% (unknown) | last used: 19m ago | synced: just now
-* [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams | 5H:?(unknown) | 7D:? (unknown) | last used: just now | synced: never
-  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise | 5H:42%(unknown) | 7D:51% (unknown) | last used: 1d ago | synced: 1d ago
+  [0] Alex Example <alex@example.invalid> - Example Workspace - Pro | 5H:78% (unknown) | 7D:69% (unknown) | last used: 19m ago
+* [1] Taylor Example <taylor@example.invalid> - Example Workspace - Teams | 5H:? (unknown) | 7D:? (unknown) | last used: just now
+  [2] Jordan Example <jordan@example.invalid> - Example Workspace - Enterprise | 5H:58% (unknown) | 7D:49% (unknown) | last used: 1d ago
 ```
 
 Output columns:
-- `synced`: When the account was last synced into the store
-- `5H`: Current or cached 5-hour usage percent and reset estimate
-- `7D`: Current or cached 7-day usage percent and reset estimate
+- `5H`: Current or cached 5-hour remaining quota and reset estimate
+- `7D`: Current or cached 7-day remaining quota and reset estimate
 - `last used`: When the account was last selected, or when Claude startup refreshed the active account marker
-- Top usage block: live `5h used/reset` and `7d used/reset` values fetched from Claude when available
+- Top usage block: live `5h` and `7d` remaining values fetched from Claude when available
 
 Claude chat shell usage:
 
