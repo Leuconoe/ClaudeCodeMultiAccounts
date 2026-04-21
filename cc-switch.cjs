@@ -48,7 +48,7 @@ const {
 const fetchUsageApi = usageFetch.fetchUsage;
 const formatUsageInfoUi = usageFormat.formatUsageInfo;
 const refreshStoredUsageSnapshotsUi = usageFormat.refreshStoredUsageSnapshots;
-const getUsageColumnsUi = usageFormat.getUsageColumns;
+const getUsageColumnsUi = outputUsage.getUsageColumns;
 
 const getPreferredDisplayNameUi = outputAccounts.getPreferredDisplayName;
 const inferPlanTypeUi = outputAccounts.inferPlanType;
