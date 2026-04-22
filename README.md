@@ -101,9 +101,9 @@ $ cc-switch 1
 Switched active account to [1] Taylor Example <taylor@example.invalid> (Teams).
 
 Stored account list:
-  [0] Alex Example | Pro | 5H:78%(unknown) | 7D:94%(unknown) | used:19m ago
-* [1] Taylor Example | Team Std | 5H:71%(unknown) | 7D:81%(unknown) | used:just now
-  [2] Jordan Example | Team Prem | 5H:0%(unknown) | 7D:65%(unknown) | used:1d ago
+  [0] Alex Example | Pro | 5H:78%(?) | 7D:94%(?) | used:19m ago
+* [1] Taylor Example | Team Std | 5H:71%(?) | 7D:81%(?) | used:just now
+  [2] Jordan Example | Team Prem | 5H:0%(?) | 7D:65%(?) | used:1d ago
 ```
 
 Output columns:
