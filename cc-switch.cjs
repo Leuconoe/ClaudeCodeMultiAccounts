@@ -14,6 +14,7 @@ const usageAction = require('./lib/actions/usage.cjs');
 const removeAction = require('./lib/actions/remove.cjs');
 const listAction = require('./lib/actions/list.cjs');
 const switchAction = require('./lib/actions/switch.cjs');
+const renameAction = require('./lib/actions/rename.cjs');
 
 const {
   getDefaultConfigPath,
@@ -50,7 +51,7 @@ const formatUsageInfoUi = usageFormat.formatUsageInfo;
 const refreshStoredUsageSnapshotsUi = usageFormat.refreshStoredUsageSnapshots;
 const getUsageColumnsUi = outputUsage.getUsageColumns;
 
-const getPreferredDisplayNameUi = outputAccounts.getPreferredDisplayName;
+const getEntryLabelUi = outputAccounts.getEntryLabel;
 const inferPlanTypeUi = outputAccounts.inferPlanType;
 const formatAccountSummaryUi = outputAccounts.formatAccountSummary;
 
@@ -67,6 +68,7 @@ const runUsageAction = usageAction.runUsageAction;
 const runRemoveAction = removeAction.runRemoveAction;
 const runListAction = listAction.runListAction;
 const runSwitchAction = switchAction.runSwitchAction;
+const runRenameAction = renameAction.runRenameAction;
 
 const STORE_VERSION = '0.2.9';
 const RESET_WINDOW_DAYS = 7;
@@ -84,6 +86,9 @@ function parseArgs(argv) {
     usageOnly: false,
     removeOnly: false,
     removeIndex: null,
+    renameOnly: false,
+    renameIndex: null,
+    renameAliasParts: [],
     showUsage: settings.showUsage !== false,
     selector: '',
   };
@@ -127,6 +132,10 @@ function parseArgs(argv) {
       options.removeOnly = true;
       continue;
     }
+    if (current === '--rename' || current === 'rename') {
+      options.renameOnly = true;
+      continue;
+    }
     if (current === '--show-usage') {
       options.showUsage = true;
       const s = readSettings();
@@ -149,6 +158,17 @@ function parseArgs(argv) {
         options.removeIndex = numeric;
         continue;
       }
+    }
+    if (options.renameOnly) {
+      if (options.renameIndex === null) {
+        const numeric = Number.parseInt(current, 10);
+        if (!Number.isNaN(numeric) && String(numeric) === current) {
+          options.renameIndex = numeric;
+          continue;
+        }
+      }
+      options.renameAliasParts.push(current);
+      continue;
     }
     if (!options.selector) {
       options.selector = current;
@@ -215,8 +235,24 @@ async function main() {
         removeStoredAccount,
         writeStore,
         options,
-        getPreferredDisplayName: getPreferredDisplayNameUi,
+        getEntryLabel: getEntryLabelUi,
         getRemainingAccountsHeading,
+      });
+      return;
+    }
+
+    if (options.renameOnly) {
+      runRenameAction(existingStore, options.renameIndex, options.renameAliasParts.join(' '), {
+        writeStore,
+        options,
+        config,
+        getEntryLabel: getEntryLabelUi,
+        getDisplayAccounts,
+        getStoredAccountsHeading,
+        formatAccountSummary: (items) => formatAccountSummaryUi(items, {
+          formatRelativeTime: formatRelativeTimeUi,
+          getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
+        }),
       });
       return;
     }
@@ -265,7 +301,7 @@ async function main() {
       writeStore,
       getDisplayAccounts,
       inferPlanType: inferPlanTypeUi,
-      getPreferredDisplayName: getPreferredDisplayNameUi,
+      getEntryLabel: getEntryLabelUi,
       getRestartNotice,
       getStoredAccountsHeading,
       formatAccountSummary: (items) => formatAccountSummaryUi(items, {
