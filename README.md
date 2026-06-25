@@ -74,10 +74,17 @@ Usage:
 ```bash
 cc-switch
 cc-switch 1
+cc-switch --rename 1 Personal
+cc-switch --rename 1
 cc-sync-oauth
 ccs
 ccso
 ```
+
+`cc-switch --rename <index> <name>` sets a custom label for a stored account
+(handy when several accounts share the same Claude display name). The alias
+survives syncs. Omit `<name>` to clear it and fall back to the account's display
+name.
 
 Example shell output:
 
