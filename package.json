@@ -27,6 +27,7 @@
     "lib/actions/remove.cjs",
     "lib/actions/list.cjs",
     "lib/actions/switch.cjs",
+    "lib/actions/rename.cjs",
     "README.md",
     "session-start.cjs",
     "statusline.cjs",
