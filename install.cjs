@@ -77,6 +77,7 @@ function installCommands() {
   const actionRemoveSource = path.join(repoRoot, 'lib', 'actions', 'remove.cjs');
   const actionListSource = path.join(repoRoot, 'lib', 'actions', 'list.cjs');
   const actionSwitchSource = path.join(repoRoot, 'lib', 'actions', 'switch.cjs');
+  const actionRenameSource = path.join(repoRoot, 'lib', 'actions', 'rename.cjs');
   const sessionStartSource = path.join(repoRoot, 'session-start.cjs');
   const statuslineSource = path.join(repoRoot, 'statusline.cjs');
   const cliTarget = path.join(binDir, 'cc-switch.cjs');
@@ -118,6 +119,7 @@ function installCommands() {
   fs.copyFileSync(actionRemoveSource, path.join(binLibActionsDir, 'remove.cjs'));
   fs.copyFileSync(actionListSource, path.join(binLibActionsDir, 'list.cjs'));
   fs.copyFileSync(actionSwitchSource, path.join(binLibActionsDir, 'switch.cjs'));
+  fs.copyFileSync(actionRenameSource, path.join(binLibActionsDir, 'rename.cjs'));
   fs.copyFileSync(sessionStartSource, sessionStartTarget);
   fs.copyFileSync(statuslineSource, statuslineTarget);
 
