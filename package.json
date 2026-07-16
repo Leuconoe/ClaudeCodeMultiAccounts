@@ -27,6 +27,11 @@
     "lib/actions/remove.cjs",
     "lib/actions/list.cjs",
     "lib/actions/switch.cjs",
+    "lib/actions/switch-pipeline.cjs",
+    "lib/actions/rename.cjs",
+    "lib/auth/guard.cjs",
+    "lib/auth/refresh.cjs",
+    "lib/proc/sessions.cjs",
     "README.md",
     "session-start.cjs",
     "statusline.cjs",
@@ -53,6 +58,7 @@
     "url": "https://github.com/Leuconoe/ClaudeCodeMultiAccounts/issues"
   },
   "scripts": {
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "test": "node --test tests/guard.test.cjs tests/refresh.test.cjs tests/io.test.cjs tests/accounts.test.cjs tests/pipeline.test.cjs tests/cli-switch.test.cjs"
   }
 }
