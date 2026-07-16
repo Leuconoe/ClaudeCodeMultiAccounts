@@ -15,6 +15,9 @@ const removeAction = require('./lib/actions/remove.cjs');
 const listAction = require('./lib/actions/list.cjs');
 const switchAction = require('./lib/actions/switch.cjs');
 const renameAction = require('./lib/actions/rename.cjs');
+const authGuard = require('./lib/auth/guard.cjs');
+const authRefresh = require('./lib/auth/refresh.cjs');
+const procSessions = require('./lib/proc/sessions.cjs');
 
 const {
   getDefaultConfigPath,
@@ -189,6 +192,9 @@ async function main() {
 
     if (options.usageOnly) {
       const syncedForUsage = syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
+      if (syncedForUsage.warning) {
+        console.log(outputMessages.getSyncSkippedWarning(syncedForUsage.warning));
+      }
       await runUsageAction({
         store: syncedForUsage.store,
         config,
@@ -258,6 +264,9 @@ async function main() {
     }
 
     const synced = syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
+    if (synced.warning) {
+      console.log(outputMessages.getSyncSkippedWarning(synced.warning));
+    }
     const store = synced.store;
     const accounts = getDisplayAccounts(store, config.oauthAccount);
 
@@ -291,7 +300,7 @@ async function main() {
     }
 
     const selected = findSelection(accounts, options.selector);
-    runSwitchAction({
+    await runSwitchAction({
       selected,
       store,
       config,
@@ -299,6 +308,11 @@ async function main() {
       deepCopy,
       writeLiveState,
       writeStore,
+      assessCredentials: authGuard.assessCredentials,
+      refreshTokens: authRefresh.refreshTokens,
+      detectClaudeSessions: procSessions.detectClaudeSessions,
+      now: () => Date.now(),
+      messages: outputMessages,
       getDisplayAccounts,
       inferPlanType: inferPlanTypeUi,
       getEntryLabel: getEntryLabelUi,
@@ -308,8 +322,6 @@ async function main() {
         formatRelativeTime: formatRelativeTimeUi,
         getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
       }),
-      RESET_WINDOW_DAYS,
-      getRateLimitResetAt,
     });
   } catch (error) {
     console.log(`Switch failed: ${error.message}`);
