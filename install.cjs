@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -29,6 +30,28 @@ function writeFileExecutable(filePath, content) {
   fs.writeFileSync(filePath, content, 'utf8');
   if (process.platform !== 'win32') {
     fs.chmodSync(filePath, 0o755);
+  }
+}
+
+// The launchers land in %USERPROFILE%\bin, which Git Bash adds to PATH on its
+// own but cmd/PowerShell do not — so `ccs` only worked inside Claude Code.
+function ensureUserPathEntry(dir) {
+  if (process.platform !== 'win32') return { changed: false, reason: 'not windows' };
+  try {
+    const query = execFileSync('reg', ['query', 'HKCU\\Environment', '/v', 'Path'], { encoding: 'utf8', windowsHide: true });
+    const match = query.match(/Path\s+REG(_EXPAND)?_SZ\s+(.*)/i);
+    const current = match ? match[2].trim() : '';
+    const entries = current.split(';').map((part) => part.trim()).filter(Boolean);
+    const normalized = dir.replace(/\\+$/, '').toLowerCase();
+    if (entries.some((entry) => entry.replace(/\\+$/, '').toLowerCase() === normalized)) {
+      return { changed: false, reason: 'already present' };
+    }
+    const next = entries.concat(dir).join(';');
+    const type = match && match[1] ? 'REG_EXPAND_SZ' : 'REG_SZ';
+    execFileSync('reg', ['add', 'HKCU\\Environment', '/v', 'Path', '/t', type, '/d', next, '/f'], { windowsHide: true });
+    return { changed: true };
+  } catch (error) {
+    return { changed: false, reason: error.message };
   }
 }
 
@@ -81,6 +104,8 @@ function installCommands() {
   const actionSwitchSource = path.join(repoRoot, 'lib', 'actions', 'switch.cjs');
   const actionSwitchPipelineSource = path.join(repoRoot, 'lib', 'actions', 'switch-pipeline.cjs');
   const actionRenameSource = path.join(repoRoot, 'lib', 'actions', 'rename.cjs');
+  const actionStagedSource = path.join(repoRoot, 'lib', 'actions', 'staged.cjs');
+  const storeLockSource = path.join(repoRoot, 'lib', 'store', 'lock.cjs');
   const authGuardSource = path.join(repoRoot, 'lib', 'auth', 'guard.cjs');
   const authRefreshSource = path.join(repoRoot, 'lib', 'auth', 'refresh.cjs');
   const procSessionsSource = path.join(repoRoot, 'lib', 'proc', 'sessions.cjs');
@@ -129,6 +154,8 @@ function installCommands() {
   fs.copyFileSync(actionSwitchSource, path.join(binLibActionsDir, 'switch.cjs'));
   fs.copyFileSync(actionSwitchPipelineSource, path.join(binLibActionsDir, 'switch-pipeline.cjs'));
   fs.copyFileSync(actionRenameSource, path.join(binLibActionsDir, 'rename.cjs'));
+  fs.copyFileSync(actionStagedSource, path.join(binLibActionsDir, 'staged.cjs'));
+  fs.copyFileSync(storeLockSource, path.join(binLibStoreDir, 'lock.cjs'));
   fs.copyFileSync(authGuardSource, path.join(binLibAuthDir, 'guard.cjs'));
   fs.copyFileSync(authRefreshSource, path.join(binLibAuthDir, 'refresh.cjs'));
   fs.copyFileSync(procSessionsSource, path.join(binLibProcDir, 'sessions.cjs'));
@@ -261,6 +288,13 @@ ${syncCommandBody}
 
   console.log(`Installed multi-account switcher scripts to ${installRoot}`);
   console.log('Installed commands: cc-switch, cc-sync-oauth, ccs, ccso, /cc-switch, /cc-sync-oauth');
+
+  const pathResult = ensureUserPathEntry(userBinDir);
+  if (pathResult.changed) {
+    console.log(`Added ${userBinDir} to your user PATH. Open a new terminal for 'ccs' to resolve there.`);
+  } else if (process.platform === 'win32' && pathResult.reason !== 'already present') {
+    console.log(`Note: could not add ${userBinDir} to your user PATH (${pathResult.reason}). Add it manually to run 'ccs' from cmd/PowerShell.`);
+  }
 }
 
 installCommands();

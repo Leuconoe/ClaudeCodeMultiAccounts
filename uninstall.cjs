@@ -3,6 +3,26 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
+
+// Mirrors the install-time PATH entry so uninstalling leaves no trace.
+function removeUserPathEntry(dir) {
+  if (process.platform !== 'win32') return { changed: false };
+  try {
+    const query = execFileSync('reg', ['query', 'HKCU\\Environment', '/v', 'Path'], { encoding: 'utf8', windowsHide: true });
+    const match = query.match(/Path\s+REG(_EXPAND)?_SZ\s+(.*)/i);
+    if (!match) return { changed: false };
+    const normalized = dir.replace(/\\+$/, '').toLowerCase();
+    const entries = match[2].trim().split(';').map((part) => part.trim()).filter(Boolean);
+    const kept = entries.filter((entry) => entry.replace(/\\+$/, '').toLowerCase() !== normalized);
+    if (kept.length === entries.length) return { changed: false };
+    const type = match[1] ? 'REG_EXPAND_SZ' : 'REG_SZ';
+    execFileSync('reg', ['add', 'HKCU\\Environment', '/v', 'Path', '/t', type, '/d', kept.join(';'), '/f'], { windowsHide: true });
+    return { changed: true };
+  } catch {
+    return { changed: false };
+  }
+}
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -96,6 +116,10 @@ function uninstallCommands() {
 
   if (fs.existsSync(installRoot)) {
     fs.rmSync(installRoot, { recursive: true, force: true });
+  }
+
+  if (removeUserPathEntry(userBinDir).changed) {
+    console.log(`Removed ${userBinDir} from your user PATH.`);
   }
 
   console.log('Uninstalled multi-account switcher.');

@@ -18,6 +18,8 @@ const renameAction = require('./lib/actions/rename.cjs');
 const authGuard = require('./lib/auth/guard.cjs');
 const authRefresh = require('./lib/auth/refresh.cjs');
 const procSessions = require('./lib/proc/sessions.cjs');
+const storeLock = require('./lib/store/lock.cjs');
+const stagedSwitch = require('./lib/actions/staged.cjs');
 
 const {
   getDefaultConfigPath,
@@ -29,6 +31,7 @@ const {
   readJsonIfExists,
   deepCopy,
   writeLiveState,
+  verifyLiveState,
   writeStore,
 } = storeIo;
 
@@ -93,6 +96,8 @@ function parseArgs(argv) {
     renameIndex: null,
     renameAliasParts: [],
     showUsage: settings.showUsage !== false,
+    force: false,
+    cancelOnly: false,
     selector: '',
   };
 
@@ -121,6 +126,14 @@ function parseArgs(argv) {
     }
     if (current === '--sync' || current === 'sync') {
       options.syncOnly = true;
+      continue;
+    }
+    if (current === '--force' || current === '-f') {
+      options.force = true;
+      continue;
+    }
+    if (current === '--cancel' || current === 'cancel') {
+      options.cancelOnly = true;
       continue;
     }
     if (current === '--touch-current') {
@@ -182,10 +195,81 @@ function parseArgs(argv) {
   return options;
 }
 
+function buildSwitchContext(extra) {
+  return {
+    deepCopy,
+    writeLiveState,
+    verifyLiveState,
+    writeStore,
+    assessCredentials: authGuard.assessCredentials,
+    refreshTokens: authRefresh.refreshTokens,
+    detectClaudeSessions: procSessions.detectClaudeSessions,
+    tokenCooldown: {
+      getUntil: () => usageCache.getTokenCooldownUntil(),
+      start: () => usageCache.setTokenCooldown(ensureDir),
+    },
+    now: () => Date.now(),
+    messages: outputMessages,
+    stageSwitch: (selected) => stagedSwitch.stageSwitch(selected, {
+      readSettings,
+      writeSettings,
+      ensureDir,
+      now: () => Date.now(),
+    }),
+    getDisplayAccounts,
+    inferPlanType: inferPlanTypeUi,
+    getEntryLabel: getEntryLabelUi,
+    getRestartNotice,
+    getStoredAccountsHeading,
+    formatAccountSummary: (items) => formatAccountSummaryUi(items, {
+      formatRelativeTime: formatRelativeTimeUi,
+      getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
+    }),
+    ...extra,
+  };
+}
+
+// Warns about slots that can no longer be restored without an interactive
+// login: a rejected refresh token, or a hard expiry closing in.
+function reportSlotHealth(accounts, options) {
+  const now = Date.now();
+  for (const entry of accounts) {
+    const label = getEntryLabelUi(entry);
+    if (entry.needsReauth) {
+      console.log(outputMessages.getNeedsReauthNotice(label, options.usageCommand));
+      continue;
+    }
+    const status = authGuard.getRefreshExpiryStatus(entry.credentials && entry.credentials.claudeAiOauth, now);
+    if (status.warn) {
+      console.log(outputMessages.getRefreshExpiryWarning(label, status.daysLeft));
+    }
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
 
+  if (options.cancelOnly) {
+    const cancelled = stagedSwitch.clearStagedSwitch({ readSettings, writeSettings, ensureDir });
+    console.log(cancelled
+      ? outputMessages.getStagedCancelledNotice(cancelled)
+      : outputMessages.getStagedMissingNotice());
+    return;
+  }
+
   try {
+    // Everything below reads-then-writes the credential files, so the lock is
+    // taken before the first read: another process (or a concurrent hook) may
+    // have rotated a single-use refresh token since we last looked.
+    await storeLock.withLock({}, async () => { await run(options); });
+  } catch (error) {
+    console.log(`Switch failed: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+
+async function run(options) {
+  {
     const config = readJson(options.configPath);
     const credentials = readJson(options.credentialsPath);
     const existingStore = normalizeStore(readJsonIfExists(options.storePath, { version: STORE_VERSION, accounts: [] }), STORE_VERSION);
@@ -270,7 +354,34 @@ async function main() {
     const store = synced.store;
     const accounts = getDisplayAccounts(store, config.oauthAccount);
 
+    // A bare invocation is the moment to apply a switch staged earlier from
+    // inside a Claude Code session that could not safely apply it.
     if (!options.selector) {
+      const staged = stagedSwitch.readStagedSwitch(readSettings());
+      if (staged) {
+        const stagedSelection = stagedSwitch.resolveStagedSelection(staged, accounts);
+        if (!stagedSelection) {
+          console.log(outputMessages.getStagedStaleNotice(staged));
+          stagedSwitch.clearStagedSwitch({ readSettings, writeSettings, ensureDir });
+        } else {
+          console.log(outputMessages.getStagedApplyingNotice(getEntryLabelUi(stagedSelection), stagedSelection.index));
+          const stagedResult = await runSwitchAction(buildSwitchContext({
+            selected: stagedSelection,
+            store,
+            config,
+            options,
+            fromStaged: true,
+          }));
+          if (stagedResult.switched) {
+            stagedSwitch.clearStagedSwitch({ readSettings, writeSettings, ensureDir });
+          }
+          return;
+        }
+      }
+    }
+
+    if (!options.selector) {
+      reportSlotHealth(accounts, options);
       await runListAction({
         synced,
         store,
@@ -300,32 +411,7 @@ async function main() {
     }
 
     const selected = findSelection(accounts, options.selector);
-    await runSwitchAction({
-      selected,
-      store,
-      config,
-      options,
-      deepCopy,
-      writeLiveState,
-      writeStore,
-      assessCredentials: authGuard.assessCredentials,
-      refreshTokens: authRefresh.refreshTokens,
-      detectClaudeSessions: procSessions.detectClaudeSessions,
-      now: () => Date.now(),
-      messages: outputMessages,
-      getDisplayAccounts,
-      inferPlanType: inferPlanTypeUi,
-      getEntryLabel: getEntryLabelUi,
-      getRestartNotice,
-      getStoredAccountsHeading,
-      formatAccountSummary: (items) => formatAccountSummaryUi(items, {
-        formatRelativeTime: formatRelativeTimeUi,
-        getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
-      }),
-    });
-  } catch (error) {
-    console.log(`Switch failed: ${error.message}`);
-    process.exitCode = 1;
+    await runSwitchAction(buildSwitchContext({ selected, store, config, options }));
   }
 }
 

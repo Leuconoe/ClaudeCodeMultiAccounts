@@ -56,9 +56,11 @@ function baseContext(fixtures, overrides = {}) {
     options: fixtures.options,
     deepCopy: io.deepCopy,
     writeLiveState: io.writeLiveState,
+    verifyLiveState: io.verifyLiveState,
     writeStore: io.writeStore,
     assessCredentials,
     detectClaudeSessions: () => ({ detected: true, count: 0 }),
+    tokenCooldown: { getUntil: () => null, start: () => {} },
     now: () => NOW,
     log: () => {},
     messages,
@@ -114,16 +116,15 @@ test('pipeline: expired slot -> refresh 200 -> rotated token persisted to store 
   fs.rmSync(fixtures.dir, { recursive: true, force: true });
 });
 
-test('pipeline: refresh rejected with 400 (revoked) -> abort, no file writes at all', async () => {
+test('pipeline: refresh rejected with 400 (revoked) -> abort, live files untouched', async () => {
   const fixtures = makeFixtures();
   const configBefore = fs.readFileSync(fixtures.options.configPath, 'utf8');
   const credentialsBefore = fs.readFileSync(fixtures.options.credentialsPath, 'utf8');
-  const storeBefore = fs.readFileSync(fixtures.options.storePath, 'utf8');
   const sequence = [];
 
   const context = baseContext(fixtures, {
     refreshTokens: async () => ({ ok: false, code: 'revoked', message: 'the stored refresh token was rejected' }),
-    writeStore: () => { sequence.push('store'); },
+    writeStore: (store, options) => { sequence.push('store'); io.writeStore(store, options); },
     writeLiveState: () => { sequence.push('live'); },
   });
 
@@ -131,10 +132,148 @@ test('pipeline: refresh rejected with 400 (revoked) -> abort, no file writes at 
 
   assert.strictEqual(result.switched, false);
   assert.strictEqual(result.abort.code, 'revoked');
-  assert.deepStrictEqual(sequence, []);
+  // The store is written to record needsReauth; the live files must not be.
+  assert.deepStrictEqual(sequence, ['store']);
   assert.strictEqual(fs.readFileSync(fixtures.options.configPath, 'utf8'), configBefore);
   assert.strictEqual(fs.readFileSync(fixtures.options.credentialsPath, 'utf8'), credentialsBefore);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: running Claude Code session blocks the switch, nothing written', async () => {
+  const fixtures = makeFixtures();
+  const configBefore = fs.readFileSync(fixtures.options.configPath, 'utf8');
+  const storeBefore = fs.readFileSync(fixtures.options.storePath, 'utf8');
+  const sequence = [];
+
+  const context = baseContext(fixtures, {
+    detectClaudeSessions: () => ({ detected: true, count: 3 }),
+    refreshTokens: async () => { throw new Error('must not refresh while blocked'); },
+    writeStore: () => { sequence.push('store'); },
+    writeLiveState: () => { sequence.push('live'); },
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, false);
+  assert.strictEqual(result.abort.code, 'sessions-running');
+  assert.strictEqual(result.abort.count, 3);
+  assert.deepStrictEqual(sequence, []);
+  assert.strictEqual(fs.readFileSync(fixtures.options.configPath, 'utf8'), configBefore);
   assert.strictEqual(fs.readFileSync(fixtures.options.storePath, 'utf8'), storeBefore);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: --force proceeds despite running sessions', async () => {
+  const fixtures = makeFixtures();
+  const context = baseContext(fixtures, {
+    options: { ...fixtures.options, force: true },
+    detectClaudeSessions: () => ({ detected: true, count: 2 }),
+    refreshTokens: async () => ({
+      ok: true,
+      claudeAiOauth: { accessToken: 'forced-access', refreshToken: 'forced-refresh', expiresAt: NOW + 28800000, refreshTokenExpiresAt: NOW + 86400000 },
+    }),
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, true);
+  assert.strictEqual(result.refreshed, true);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: live files rewritten after the swap -> verify-failed, not reported as success', async () => {
+  const fixtures = makeFixtures();
+  const context = baseContext(fixtures, {
+    refreshTokens: async () => ({
+      ok: true,
+      claudeAiOauth: { accessToken: 'rotated-access-b', refreshToken: 'rotated-refresh-b', expiresAt: NOW + 28800000, refreshTokenExpiresAt: NOW + 86400000 },
+    }),
+    writeLiveState: (config, credentials, options) => {
+      io.writeLiveState(config, credentials, options);
+      // Simulate a running Claude Code session rewriting ~/.claude.json with
+      // its own in-memory oauthAccount right after our swap.
+      const reverted = JSON.parse(fs.readFileSync(options.configPath, 'utf8'));
+      reverted.oauthAccount = { accountUuid: 'uuid-a', emailAddress: 'a@test.com' };
+      fs.writeFileSync(options.configPath, JSON.stringify(reverted, null, 2), 'utf8');
+    },
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, false);
+  assert.strictEqual(result.abort.code, 'verify-failed');
+  assert.match(result.abort.reason, /oauthAccount/);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: revoked refresh token marks the slot needsReauth and persists it', async () => {
+  const fixtures = makeFixtures();
+  const context = baseContext(fixtures, {
+    refreshTokens: async () => ({ ok: false, code: 'revoked', message: 'the stored refresh token was rejected' }),
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, false);
+  assert.strictEqual(result.abort.code, 'revoked');
+  const persisted = JSON.parse(fs.readFileSync(fixtures.options.storePath, 'utf8'));
+  assert.strictEqual(persisted.accounts.find((e) => e.key === 'uuid:uuid-b').needsReauth, true);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: active token-endpoint cooldown blocks refresh without a request', async () => {
+  const fixtures = makeFixtures();
+  let called = 0;
+  const context = baseContext(fixtures, {
+    tokenCooldown: { getUntil: () => NOW + 60000, start: () => {} },
+    refreshTokens: async () => { called += 1; return { ok: true, claudeAiOauth: {} }; },
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, false);
+  assert.strictEqual(result.abort.code, 'rate-limited');
+  assert.strictEqual(called, 0);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: 429 refresh starts the cooldown', async () => {
+  const fixtures = makeFixtures();
+  let started = 0;
+  const context = baseContext(fixtures, {
+    tokenCooldown: { getUntil: () => null, start: () => { started += 1; } },
+    refreshTokens: async () => ({ ok: false, code: 'rate-limited', message: 'rate limited' }),
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, false);
+  assert.strictEqual(started, 1);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('pipeline: successful switch clears a previous needsReauth mark', async () => {
+  const fixtures = makeFixtures();
+  fixtures.store.accounts[0].needsReauth = true;
+  const context = baseContext(fixtures, {
+    refreshTokens: async () => ({
+      ok: true,
+      claudeAiOauth: { accessToken: 'ok-access', refreshToken: 'ok-refresh', expiresAt: NOW + 28800000, refreshTokenExpiresAt: NOW + 86400000 },
+    }),
+  });
+
+  const result = await runSwitchPipeline(context);
+
+  assert.strictEqual(result.switched, true);
+  const persisted = JSON.parse(fs.readFileSync(fixtures.options.storePath, 'utf8'));
+  assert.ok(!('needsReauth' in persisted.accounts.find((e) => e.key === 'uuid:uuid-b')));
 
   fs.rmSync(fixtures.dir, { recursive: true, force: true });
 });
