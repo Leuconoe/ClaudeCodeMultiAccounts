@@ -105,6 +105,7 @@ function installCommands() {
   const actionSwitchPipelineSource = path.join(repoRoot, 'lib', 'actions', 'switch-pipeline.cjs');
   const actionRenameSource = path.join(repoRoot, 'lib', 'actions', 'rename.cjs');
   const actionStagedSource = path.join(repoRoot, 'lib', 'actions', 'staged.cjs');
+  const actionWatcherSource = path.join(repoRoot, 'lib', 'actions', 'watcher.cjs');
   const storeLockSource = path.join(repoRoot, 'lib', 'store', 'lock.cjs');
   const authGuardSource = path.join(repoRoot, 'lib', 'auth', 'guard.cjs');
   const authRefreshSource = path.join(repoRoot, 'lib', 'auth', 'refresh.cjs');
@@ -155,6 +156,7 @@ function installCommands() {
   fs.copyFileSync(actionSwitchPipelineSource, path.join(binLibActionsDir, 'switch-pipeline.cjs'));
   fs.copyFileSync(actionRenameSource, path.join(binLibActionsDir, 'rename.cjs'));
   fs.copyFileSync(actionStagedSource, path.join(binLibActionsDir, 'staged.cjs'));
+  fs.copyFileSync(actionWatcherSource, path.join(binLibActionsDir, 'watcher.cjs'));
   fs.copyFileSync(storeLockSource, path.join(binLibStoreDir, 'lock.cjs'));
   fs.copyFileSync(authGuardSource, path.join(binLibAuthDir, 'guard.cjs'));
   fs.copyFileSync(authRefreshSource, path.join(binLibAuthDir, 'refresh.cjs'));

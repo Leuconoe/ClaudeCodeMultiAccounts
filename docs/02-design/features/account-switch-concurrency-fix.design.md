@@ -248,7 +248,27 @@ cc-switch.cjs (entry)
 | FR-05 실패 분류/표식 | pipeline, `cache.cjs` 쿨다운 | ✅ |
 | FR-06 만료 카운트다운 | `guard.getRefreshExpiryStatus`, `reportSlotHealth` | ✅ |
 | FR-07 PATH 등록 | `install.cjs`, `uninstall.cjs` | ✅ |
+| FR-11 예약 자동 적용 | `lib/actions/watcher.cjs`, `cc-switch.cjs --watch-apply` | ✅ |
 | FR-08~10 격리 모드 | — | Phase 2 |
+
+### 10.1 Staged Auto-Apply (FR-11)
+
+예약만으로는 사용자가 다시 터미널로 돌아와야 하므로, 예약 시 detached 감시자를 띄운다.
+
+```
+ccs <n> (세션 있음)
+  → 예약 기록 + spawnWatcher (detached, stdio ignore, unref)
+  → settings.watcher = { pid, startedAt }   ← 중복 기동 방지(pid 생존 확인)
+
+감시자 루프 (5초 폴링, 최대 6시간)
+  ├ 예약 사라짐        → 'cancelled' 종료
+  ├ 최대 대기 초과      → 'timeout' 종료
+  └ 세션 수 0           → 예약 재확인(슬립 중 취소 대비) → 락 획득 → 적용
+                          검증 통과로 예약이 삭제되었는지로 성패 판정
+  종료 시 settings.watcher 제거
+```
+
+`--no-watch`로 감시자 없이 예약만 할 수 있다(테스트/CI용).
 
 ---
 

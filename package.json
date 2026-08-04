@@ -30,6 +30,7 @@
     "lib/actions/switch-pipeline.cjs",
     "lib/actions/rename.cjs",
     "lib/actions/staged.cjs",
+    "lib/actions/watcher.cjs",
     "lib/store/lock.cjs",
     "lib/auth/guard.cjs",
     "lib/auth/refresh.cjs",
@@ -61,6 +62,6 @@
   },
   "scripts": {
     "pack:check": "npm pack --dry-run",
-    "test": "node --test tests/guard.test.cjs tests/refresh.test.cjs tests/io.test.cjs tests/accounts.test.cjs tests/lock.test.cjs tests/pipeline.test.cjs tests/cli-switch.test.cjs"
+    "test": "node --test tests/guard.test.cjs tests/refresh.test.cjs tests/io.test.cjs tests/accounts.test.cjs tests/lock.test.cjs tests/pipeline.test.cjs tests/watcher.test.cjs tests/cli-switch.test.cjs"
   }
 }

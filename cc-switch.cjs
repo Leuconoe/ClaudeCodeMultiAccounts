@@ -20,6 +20,7 @@ const authRefresh = require('./lib/auth/refresh.cjs');
 const procSessions = require('./lib/proc/sessions.cjs');
 const storeLock = require('./lib/store/lock.cjs');
 const stagedSwitch = require('./lib/actions/staged.cjs');
+const switchWatcher = require('./lib/actions/watcher.cjs');
 
 const {
   getDefaultConfigPath,
@@ -98,6 +99,8 @@ function parseArgs(argv) {
     showUsage: settings.showUsage !== false,
     force: false,
     cancelOnly: false,
+    watchApply: false,
+    noWatch: false,
     selector: '',
   };
 
@@ -134,6 +137,14 @@ function parseArgs(argv) {
     }
     if (current === '--cancel' || current === 'cancel') {
       options.cancelOnly = true;
+      continue;
+    }
+    if (current === '--watch-apply') {
+      options.watchApply = true;
+      continue;
+    }
+    if (current === '--no-watch') {
+      options.noWatch = true;
       continue;
     }
     if (current === '--touch-current') {
@@ -210,12 +221,24 @@ function buildSwitchContext(extra) {
     },
     now: () => Date.now(),
     messages: outputMessages,
-    stageSwitch: (selected) => stagedSwitch.stageSwitch(selected, {
-      readSettings,
-      writeSettings,
-      ensureDir,
-      now: () => Date.now(),
-    }),
+    stageSwitch: (selected) => {
+      const staged = stagedSwitch.stageSwitch(selected, {
+        readSettings,
+        writeSettings,
+        ensureDir,
+        now: () => Date.now(),
+      });
+      if (!extra.options.noWatch) {
+        staged.watcher = switchWatcher.spawnWatcher({
+          cliPath: __filename,
+          options: extra.options,
+          readSettings,
+          writeSettings,
+          ensureDir,
+        });
+      }
+      return staged;
+    },
     getDisplayAccounts,
     inferPlanType: inferPlanTypeUi,
     getEntryLabel: getEntryLabelUi,
@@ -251,9 +274,15 @@ async function main() {
 
   if (options.cancelOnly) {
     const cancelled = stagedSwitch.clearStagedSwitch({ readSettings, writeSettings, ensureDir });
+    // The watcher notices the cleared record on its next tick and exits.
     console.log(cancelled
       ? outputMessages.getStagedCancelledNotice(cancelled)
       : outputMessages.getStagedMissingNotice());
+    return;
+  }
+
+  if (options.watchApply) {
+    await runWatcher(options);
     return;
   }
 
@@ -266,6 +295,30 @@ async function main() {
     console.log(`Switch failed: ${error.message}`);
     process.exitCode = 1;
   }
+}
+
+// Runs detached after a staged switch: waits for the last Claude Code session
+// to exit, then applies the switch so the next launch is on the new account.
+async function runWatcher(options) {
+  const applyOptions = { ...options, watchApply: false, selector: '', showUsage: false };
+  const result = await switchWatcher.runWatchLoop({
+    detectClaudeSessions: procSessions.detectClaudeSessions,
+    readStaged: () => stagedSwitch.readStagedSwitch(readSettings()),
+    applyNow: async () => {
+      try {
+        await storeLock.withLock({}, async () => { await run(applyOptions); });
+      } catch {
+        return false;
+      }
+      // run() clears the staged record only after a verified switch.
+      return !stagedSwitch.readStagedSwitch(readSettings());
+    },
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
+  });
+  switchWatcher.clearWatcherRecord({ readSettings, writeSettings, ensureDir });
+  console.log(`Watcher finished: ${result.outcome}`);
+  return result;
 }
 
 async function run(options) {
