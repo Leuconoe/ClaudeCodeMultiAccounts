@@ -2,7 +2,7 @@
 # CodeRabbit configuration for claude-code-multi-accounts.
 # Docs: https://docs.coderabbit.ai/getting-started/configure-coderabbit
 
-language: "ko-KR"
+language: "en-US"
 
 tone_instructions: >-
   Be concrete and evidence-based. This CLI moves real OAuth credentials between
