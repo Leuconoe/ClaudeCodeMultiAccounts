@@ -62,7 +62,7 @@ function makeFixtures({ storedSlotExpired = false } = {}) {
   return { dir, configPath, credentialsPath, storePath, backupDir };
 }
 
-function runCli(fixtures, args) {
+function runCli(fixtures, args, env = {}) {
   return execFileSync(process.execPath, [
     CLI,
     ...args,
@@ -70,7 +70,12 @@ function runCli(fixtures, args) {
     '--credentials', fixtures.credentialsPath,
     '--store', fixtures.storePath,
     '--backup-dir', fixtures.backupDir,
-  ], { encoding: 'utf8' });
+  ], {
+    encoding: 'utf8',
+    // Session count and the settings dir are machine state; pin both so the
+    // tests do not depend on whether Claude Code happens to be running.
+    env: { ...process.env, CC_SWITCH_SESSION_COUNT: '0', HOME: fixtures.dir, USERPROFILE: fixtures.dir, ...env },
+  });
 }
 
 test('switch to valid stored slot: swaps both live files, preserves siblings, no re-login path', () => {
@@ -115,6 +120,73 @@ test('switch to dead slot (refresh token expired): aborts, live files untouched,
 
   assert.strictEqual(fs.readFileSync(fixtures.configPath, 'utf8'), configBefore);
   assert.strictEqual(fs.readFileSync(fixtures.credentialsPath, 'utf8'), credentialsBefore);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('running sessions: switch is refused and staged instead of applied', () => {
+  const fixtures = makeFixtures();
+  const configBefore = fs.readFileSync(fixtures.configPath, 'utf8');
+  const credentialsBefore = fs.readFileSync(fixtures.credentialsPath, 'utf8');
+
+  let failed = null;
+  try {
+    runCli(fixtures, ['0'], { CC_SWITCH_SESSION_COUNT: '3' });
+  } catch (error) {
+    failed = error;
+  }
+
+  assert.ok(failed, 'must exit non-zero rather than report a switch it cannot make');
+  assert.strictEqual(failed.status, 1);
+  assert.match(String(failed.stdout), /Cannot switch now: 3 Claude Code session\(s\) are running/);
+  assert.match(String(failed.stdout), /Staged switch to \[0\]/);
+  assert.doesNotMatch(String(failed.stdout), /Switched active account/);
+
+  // Live files untouched by a staged switch.
+  assert.strictEqual(fs.readFileSync(fixtures.configPath, 'utf8'), configBefore);
+  assert.strictEqual(fs.readFileSync(fixtures.credentialsPath, 'utf8'), credentialsBefore);
+
+  // The staged intent is recorded under the pinned home dir.
+  const settings = JSON.parse(fs.readFileSync(path.join(fixtures.dir, '.claude', 'multi-account-switch', 'settings.json'), 'utf8'));
+  assert.strictEqual(settings.stagedSwitch.key, 'uuid:uuid-stored-b');
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('staged switch applies on a later bare invocation with no sessions running', () => {
+  const fixtures = makeFixtures();
+
+  try {
+    runCli(fixtures, ['0'], { CC_SWITCH_SESSION_COUNT: '3' });
+  } catch {
+    // expected: staged, not applied
+  }
+
+  const output = runCli(fixtures, [], { CC_SWITCH_SESSION_COUNT: '0' });
+  assert.match(output, /Applying staged switch/);
+  assert.match(output, /Switched active account to \[0\]/);
+
+  const config = JSON.parse(fs.readFileSync(fixtures.configPath, 'utf8'));
+  assert.strictEqual(config.oauthAccount.accountUuid, 'uuid-stored-b');
+
+  const settings = JSON.parse(fs.readFileSync(path.join(fixtures.dir, '.claude', 'multi-account-switch', 'settings.json'), 'utf8'));
+  assert.ok(!settings.stagedSwitch, 'the staged record is cleared once applied');
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('cancel discards a staged switch', () => {
+  const fixtures = makeFixtures();
+  try {
+    runCli(fixtures, ['0'], { CC_SWITCH_SESSION_COUNT: '3' });
+  } catch {
+    // expected
+  }
+
+  const output = runCli(fixtures, ['cancel']);
+  assert.match(output, /Cancelled the staged switch/);
+  const settings = JSON.parse(fs.readFileSync(path.join(fixtures.dir, '.claude', 'multi-account-switch', 'settings.json'), 'utf8'));
+  assert.ok(!settings.stagedSwitch);
 
   fs.rmSync(fixtures.dir, { recursive: true, force: true });
 });
