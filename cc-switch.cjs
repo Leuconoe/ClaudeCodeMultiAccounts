@@ -30,6 +30,7 @@ const {
   ensureDir,
   readJson,
   readJsonIfExists,
+  readCredentials,
   deepCopy,
   writeLiveState,
   verifyLiveState,
@@ -324,7 +325,7 @@ async function runWatcher(options) {
 async function run(options) {
   {
     const config = readJson(options.configPath);
-    const credentials = readJson(options.credentialsPath);
+    const credentials = readCredentials(options.credentialsPath);
     const existingStore = normalizeStore(readJsonIfExists(options.storePath, { version: STORE_VERSION, accounts: [] }), STORE_VERSION);
 
     if (options.usageOnly) {

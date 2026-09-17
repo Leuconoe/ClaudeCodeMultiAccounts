@@ -3,7 +3,15 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { writeJsonAtomic, mergeCredentialsWrite, readJson, backupFile } = require('../lib/store/io.cjs');
+const {
+  writeJsonAtomic,
+  mergeCredentialsWrite,
+  readJson,
+  backupFile,
+  readCredentials,
+  writeCredentials,
+  verifyLiveState,
+} = require('../lib/store/io.cjs');
 
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cc-switch-io-test-'));
@@ -104,5 +112,92 @@ test('backupFile: retention is per source file, not global across the backup dir
   const bBackups = names.filter((n) => n.startsWith('.credentials.json.'));
   assert.strictEqual(aBackups.length, 3, '.claude.json backups must survive .credentials.json pruning');
   assert.strictEqual(bBackups.length, 3);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+function keychainExecFactory({ credentials, account = 'test-user', failRead = null }) {
+  const calls = [];
+  const execFileSync = (command, args) => {
+    calls.push({ command, args });
+    if (args[0] === 'find-generic-password' && args.includes('-w')) {
+      if (failRead) throw failRead;
+      return `${JSON.stringify(credentials)}\n`;
+    }
+    if (args[0] === 'find-generic-password') {
+      return `    "acct"<blob>="${account}"\n`;
+    }
+    return '';
+  };
+  return { calls, execFileSync };
+}
+
+test('macOS keychain credentials are read, backed up, and updated safely', () => {
+  const dir = tempDir();
+  const credentialsPath = path.join(dir, '.credentials.json');
+  const backupDir = path.join(dir, 'backups');
+  const current = {
+    claudeAiOauth: { accessToken: 'old' },
+    mcpOAuth: { provider: 'must-survive' },
+  };
+  const keychain = keychainExecFactory({ credentials: current });
+
+  assert.deepStrictEqual(readCredentials(credentialsPath, {
+    platform: 'darwin',
+    execFileSync: keychain.execFileSync,
+  }), current);
+
+  writeCredentials(credentialsPath, {
+    claudeAiOauth: { accessToken: 'new' },
+  }, backupDir, {
+    platform: 'darwin',
+    execFileSync: keychain.execFileSync,
+  });
+
+  const writeCall = keychain.calls.find((call) => call.args[0] === 'add-generic-password');
+  assert.ok(writeCall);
+  const written = JSON.parse(writeCall.args[writeCall.args.indexOf('-w') + 1]);
+  assert.strictEqual(written.claudeAiOauth.accessToken, 'new');
+  assert.deepStrictEqual(written.mcpOAuth, current.mcpOAuth);
+  assert.strictEqual(fs.readdirSync(backupDir).length, 1);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('macOS keychain access failures stop before any write', () => {
+  const dir = tempDir();
+  const credentialsPath = path.join(dir, '.credentials.json');
+  const backupDir = path.join(dir, 'backups');
+  const error = Object.assign(new Error('access denied'), {
+    status: 36,
+    stderr: 'User interaction is not allowed.',
+  });
+  const keychain = keychainExecFactory({
+    credentials: {},
+    failRead: error,
+  });
+
+  assert.throws(() => writeCredentials(credentialsPath, {
+    claudeAiOauth: { accessToken: 'new' },
+  }, backupDir, {
+    platform: 'darwin',
+    execFileSync: keychain.execFileSync,
+  }), /Failed to read macOS keychain credentials/);
+  assert.strictEqual(keychain.calls.some((call) => call.args[0] === 'add-generic-password'), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('verifyLiveState reads macOS keychain credentials', () => {
+  const dir = tempDir();
+  const configPath = path.join(dir, '.claude.json');
+  const credentialsPath = path.join(dir, '.credentials.json');
+  fs.writeFileSync(configPath, JSON.stringify({ oauthAccount: { accountUuid: 'uuid-a' } }), 'utf8');
+  const keychain = keychainExecFactory({ credentials: { claudeAiOauth: { accessToken: 'token-a' } } });
+
+  assert.deepStrictEqual(verifyLiveState({ configPath, credentialsPath }, {
+    accountUuid: 'uuid-a',
+    accessToken: 'token-a',
+  }, {
+    platform: 'darwin',
+    execFileSync: keychain.execFileSync,
+  }), { ok: true });
   fs.rmSync(dir, { recursive: true, force: true });
 });
