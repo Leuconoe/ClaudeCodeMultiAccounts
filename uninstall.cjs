@@ -48,7 +48,6 @@ function writeJson(filePath, value) {
 function uninstallCommands() {
   const home = os.homedir();
   const installRoot = path.join(home, '.claude', 'multi-account-switch');
-  const commandsDir = path.join(home, '.claude', 'commands');
   const userBinDir = process.platform === 'win32' ? path.join(home, 'bin') : path.join(home, '.local', 'bin');
   const settingsPath = path.join(home, '.claude', 'settings.json');
   const backupDir = path.join(home, '.claude', 'backups', 'multi-account-switch-installer');
@@ -102,13 +101,6 @@ function uninstallCommands() {
 
   for (const name of ['cc-switch', 'cc-sync-oauth', 'ccs', 'ccso', 'cc-switch.cmd', 'cc-sync-oauth.cmd', 'ccs.cmd', 'ccso.cmd']) {
     const target = path.join(userBinDir, name);
-    if (fs.existsSync(target)) {
-      fs.rmSync(target, { force: true });
-    }
-  }
-
-  for (const name of ['cc-switch.md', 'cc-sync-oauth.md']) {
-    const target = path.join(commandsDir, name);
     if (fs.existsSync(target)) {
       fs.rmSync(target, { force: true });
     }

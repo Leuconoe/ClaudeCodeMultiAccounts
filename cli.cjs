@@ -28,7 +28,7 @@ switch (command) {
     run(path.join(__dirname, 'uninstall.cjs'), args);
     break;
   case 'switch':
-    run(path.join(__dirname, 'cc-switch.cjs'), ['--usage-command', 'cc-switch', ...args]);
+    run(path.join(__dirname, 'cc-switch.cjs'), args);
     break;
   case 'sync':
     run(path.join(__dirname, 'cc-switch.cjs'), ['sync', ...args]);

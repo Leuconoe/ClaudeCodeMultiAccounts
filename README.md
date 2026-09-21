@@ -3,93 +3,47 @@
 [![npm version](https://img.shields.io/npm/v/claude-code-multi-accounts?label=npm)](https://www.npmjs.com/package/claude-code-multi-accounts)
 [![npm downloads](https://img.shields.io/npm/dm/claude-code-multi-accounts)](https://www.npmjs.com/package/claude-code-multi-accounts)
 
-This project installs a local workaround for switching Claude Code OAuth accounts by keeping account snapshots in `~/.ClaudeCodeMultiAccounts.json` and writing only the active account back into Claude's live files when switching.
+Switch between several Claude Code OAuth accounts from the terminal or from inside a Claude Code session.
+Account snapshots live in `~/.ClaudeCodeMultiAccounts.json`; switching writes only the active account back into Claude's live files.
 
-Supported user-facing commands:
-- `cc-switch`
-- `cc-switch <index>`
-- `cc-sync-oauth`
-- `ccs` (short alias for `cc-switch`)
-- `ccso` (short alias for `cc-sync-oauth`)
-- `/cc-switch`
-- `/cc-sync-oauth`
+Works on Windows (PowerShell / CMD / Git Bash), WSL, macOS, and Linux. Requires Node.js 18+ and a Claude Code that has logged in at least once.
 
-Supported environments:
-- Windows (PowerShell/CMD/Git Bash)
-- Ubuntu WSL
-- Native macOS/Linux with Node.js
-- Claude chat shell mode via `!cc-switch` and `!cc-sync-oauth`
-
-Prerequisites:
-- Node.js 18+
-- Claude Code already installed and logged in at least once
-
-Install:
-
-**Recommended (via npm):**
+## Install
 
 ```bash
 npx claude-code-multi-accounts install
 ```
 
-**Manual (from source):**
+This installs two commands, `ccs` and `ccso`, adds an `auth_success` hook that captures each new login automatically, and adds a short `SessionStart` reminder. Backups of `~/.claude/settings.json` go to `~/.claude/backups/multi-account-switch-installer`.
+
+If a shell says `command not found` right after install, open a new terminal.
+
+## Usage
 
 ```bash
-git clone https://github.com/Leuconoe/ClaudeCodeMultiAccounts.git
-cd ClaudeCodeMultiAccounts
-./install.cmd   # Windows
-./install.sh    # macOS / Linux / WSL
+ccs                        # list stored accounts with usage
+ccs 1                      # switch to account [1]
+ccs --rename 1 Personal    # label an account (omit the name to clear it)
+ccs --remove 1             # forget a stored account
+ccso                       # sync the current live login into the store
 ```
 
-What install does:
-- copies the Node CLI into `~/.claude/multi-account-switch/bin`
-- installs `cc-switch`, `cc-sync-oauth`, `ccs`, and `ccso` wrapper commands
-- keeps stored account snapshots in `~/.ClaudeCodeMultiAccounts.json`
-- adds an `auth_success` hook entry to `~/.claude/settings.json`
-- adds a `SessionStart` reminder hook to `~/.claude/settings.json`
-- if `statusLine.command` already exists, wraps it and prepends `use !cc-switch / !ccs` to the existing HUD output
-- installs global Claude command wrappers in `~/.claude/commands`
-- creates backups under `~/.claude/backups/multi-account-switch-installer`
-
-Uninstall:
-
-**Recommended (via npm):**
-
-```bash
-npx claude-code-multi-accounts uninstall
-```
-
-**Manual (from source):**
-
-```powershell
-./uninstall.cmd   # Windows
-```
-
-```bash
-./uninstall.sh    # macOS / Linux / WSL
-```
-
-Usage:
-
-```bash
-cc-switch
-cc-switch 1
-cc-switch --rename 1 Personal
-cc-switch --rename 1
-cc-sync-oauth
-ccs
-ccso
-```
-
-`cc-switch --rename <index> <name>` sets a custom label for a stored account
-(handy when several accounts share the same Claude display name). The alias
-survives syncs. Omit `<name>` to clear it and fall back to the account's display
-name.
-
-Example shell output:
+Inside Claude Code, prefix with `!`:
 
 ```text
-$ cc-switch
+!ccs
+!ccs 1
+!ccso
+```
+
+Log into each account once in Claude Code (`/login`); the hook stores it. From then on switch with `ccs <index>`.
+
+> **Deprecated:** the long-form commands `cc-switch` and `cc-sync-oauth` are still installed as aliases of `ccs` and `ccso`, but they will be removed in a future release. Switch to the short names.
+
+Example:
+
+```text
+$ ccs
 --- Usage ---
 5h remaining/reset: 78.0% / 2026. 4. 22. 2:00 PM
 7d remaining/reset: 94.0% / 2026. 4. 24. 9:00 AM
@@ -99,82 +53,23 @@ Available Claude accounts:
   [1] Taylor Example | Team Std | 5H:71%(now) | 7D:81%(1D 21h) | used:19h ago
   [2] Jordan Example | Team Prem | 5H:0%(now) | 7D:65%(2D 5h) | used:1d ago
 
-Run cc-switch <index> to make one of these stored entries the active Claude account.
-Run cc-switch --remove <index> to remove a stored account.
+Run ccs <index> to make one of these stored entries the active Claude account.
+Run ccs --remove <index> to remove a stored account.
 ```
 
-```text
-$ cc-switch 1
-Switched active account to [1] Taylor Example <taylor@example.invalid> (Teams).
+Columns: `5H` / `7D` are the remaining 5-hour and 7-day quota with a reset estimate (cached for non-active accounts); `used` is when the account was last active. The plan label is a best-effort guess.
 
-Stored account list:
-  [0] Alex Example | Pro | 5H:78%(?) | 7D:94%(?) | used:19m ago
-* [1] Taylor Example | Team Std | 5H:71%(?) | 7D:81%(?) | used:just now
-  [2] Jordan Example | Team Prem | 5H:0%(?) | 7D:65%(?) | used:1d ago
-```
+## Notes
 
-Output columns:
-- `5H`: Current or cached 5-hour remaining quota and reset estimate
-- `7D`: Current or cached 7-day remaining quota and reset estimate
-- `used`: When the account was last selected, or when Claude startup refreshed the active account marker
-- Top usage block: live `5h remaining/reset` and `7d remaining/reset` values fetched from Claude when available
+- Switching while Claude Code is running is refused; the switch is staged and applied automatically once every Claude Code window closes. `ccs cancel` discards it.
+- Every write to a live file or the store is backed up first.
+- This is a local workaround, not an official Claude feature. It edits `~/.claude.json` and `~/.claude/.credentials.json`.
 
-Claude chat shell usage:
+## Uninstall
 
 ```bash
-!cc-switch
-!cc-switch 1
-!cc-sync-oauth
-!ccs
-!ccso
+npx claude-code-multi-accounts uninstall
 ```
-
-Claude `/command` usage:
-
-```text
-/cc-switch
-/cc-switch 1
-/cc-sync-oauth
-```
-
-`/cc-switch` currently still goes through Claude's command-processing path, so `!cc-switch` remains the primary deterministic execution path. The slash command is installed now so it can benefit from future improvements in Claude's command handling.
-
-Claude startup reminder:
-
-```text
-Claude Code Multi-Account Switcher is available.
-Use !cc-switch or !ccs to list/switch accounts.
-Use !cc-sync-oauth or !ccso to sync the active account into oauthList.
-```
-
-Platform notes:
-- Windows installs `cc-switch.cmd` and `cc-sync-oauth.cmd` into `~/bin`, plus Git Bash-friendly `cc-switch` and `cc-sync-oauth` wrappers in the same directory.
-- Short aliases `ccs` and `ccso` are installed alongside the full command names.
-- Native macOS/Linux installs commands into `~/.local/bin`.
-- WSL also uses the Unix shell wrappers.
-- If a shell says `command not found` right after install, restart the shell or run `hash -r` once.
-
-Behavior notes:
-- The tool stores metadata and credential snapshots in `~/.ClaudeCodeMultiAccounts.json`.
-- `cc-sync-oauth` imports the current live account into that store.
-- Switching writes only the active `oauthAccount` back into `~/.claude.json` and the active credential snapshot back into `~/.claude/.credentials.json`.
-- It creates backups before writing live files or the store file.
-- Stored account ordering is stable.
-- If a stored `displayName` is already corrupted, output falls back to the email local part.
-- The displayed plan type is a best-effort inference from the available account fields and credential snapshot.
-- The `reset:` column shows rate limit countdown for the current account, or a 7-day window estimate for others.
-- Usage info from the Claude API is shown before the account list when rate limited.
-
-Warnings:
-- This is a local workaround, not an official Claude plugin.
-- It still mutates internal Claude live files when switching accounts, but it no longer uses `~/.claude.json` as the primary multi-account store.
-- Native macOS/Linux support is implemented, but still needs real-host validation beyond Windows/WSL testing.
-- npm packaging is prepared, but npm registry publish still requires npm authentication.
-
-After this:
-- npm / `npx` release refresh for `v0.3.7`
-- non-AI hook execution path for `/cc-switch` if Claude exposes a direct command hook in the future
-- improve plan type detection beyond the current best-effort inference
 
 ## Star History
 

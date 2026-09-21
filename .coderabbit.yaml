@@ -94,8 +94,8 @@ reviews:
     - path: "uninstall.cjs"
       instructions: >-
         Uninstall must reverse exactly what install.cjs added (launchers, hooks,
-        statusline, PATH entry) and must not delete user data such as the account
-        store or backups.
+        PATH entry) and must not delete user data such as the account store or
+        backups.
 
     - path: "tests/**/*.test.cjs"
       instructions: >-

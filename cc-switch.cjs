@@ -84,7 +84,6 @@ const RESET_WINDOW_DAYS = 7;
 function parseArgs(argv) {
   const settings = readSettings();
   const options = {
-    usageCommand: '/switch',
     configPath: getDefaultConfigPath(),
     credentialsPath: getDefaultCredentialsPath(),
     storePath: getDefaultStorePath(),
@@ -108,10 +107,6 @@ function parseArgs(argv) {
   const args = [...argv];
   while (args.length > 0) {
     const current = args.shift();
-    if (current === '--usage-command') {
-      options.usageCommand = args.shift() || options.usageCommand;
-      continue;
-    }
     if (current === '--config') {
       options.configPath = args.shift() || options.configPath;
       continue;
@@ -260,7 +255,7 @@ function reportSlotHealth(accounts, options) {
   for (const entry of accounts) {
     const label = getEntryLabelUi(entry);
     if (entry.needsReauth) {
-      console.log(outputMessages.getNeedsReauthNotice(label, options.usageCommand));
+      console.log(outputMessages.getNeedsReauthNotice(label));
       continue;
     }
     const status = authGuard.getRefreshExpiryStatus(entry.credentials && entry.credentials.claudeAiOauth, now);

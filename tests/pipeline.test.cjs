@@ -13,7 +13,6 @@ const NOW = Date.now();
 function makeFixtures() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-switch-pipeline-test-'));
   const options = {
-    usageCommand: '/switch',
     configPath: path.join(dir, '.claude.json'),
     credentialsPath: path.join(dir, '.credentials.json'),
     storePath: path.join(dir, 'store.json'),

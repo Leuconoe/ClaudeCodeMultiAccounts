@@ -55,21 +55,19 @@ function ensureUserPathEntry(dir) {
   }
 }
 
-function isStaleStatusLineTarget(statusLine) {
-  if (!statusLine || statusLine.type !== 'command' || !statusLine.command) {
-    return true;
+// Older releases wrapped statusLine.command; put the user's original back.
+function restoreLegacyStatusLine(settings, hooksDir) {
+  const legacyCommand = process.platform === 'win32'
+    ? `node "${path.join(hooksDir, 'statusline.cjs')}"`
+    : `node '${path.join(hooksDir, 'statusline.cjs')}'`;
+  const targetPath = path.join(hooksDir, 'statusline-target.json');
+  if (settings.statusLine?.type === 'command' && settings.statusLine.command === legacyCommand) {
+    const original = readJson(targetPath, null);
+    if (original) settings.statusLine = original;
+    else delete settings.statusLine;
   }
-
-  const command = String(statusLine.command).toLowerCase();
-  if (command.includes('tabber') || command.includes('omc-hud')) {
-    return true;
-  }
-
-  if ((command.endsWith('.py') || command.includes('.py\"') || command.includes(".py'")) && !command.includes('python')) {
-    return true;
-  }
-
-  return false;
+  fs.rmSync(targetPath, { force: true });
+  fs.rmSync(path.join(hooksDir, 'statusline.cjs'), { force: true });
 }
 
 function installCommands() {
@@ -77,51 +75,15 @@ function installCommands() {
   const home = os.homedir();
   const installRoot = path.join(home, '.claude', 'multi-account-switch');
   const binDir = path.join(installRoot, 'bin');
-  const binLibStoreDir = path.join(binDir, 'lib', 'store');
-  const binLibUsageDir = path.join(binDir, 'lib', 'usage');
-  const binLibOutputDir = path.join(binDir, 'lib', 'output');
-  const binLibActionsDir = path.join(binDir, 'lib', 'actions');
-  const binLibAuthDir = path.join(binDir, 'lib', 'auth');
-  const binLibProcDir = path.join(binDir, 'lib', 'proc');
   const hooksDir = path.join(installRoot, 'hooks');
-  const commandsDir = path.join(home, '.claude', 'commands');
   const userBinDir = process.platform === 'win32' ? path.join(home, 'bin') : path.join(home, '.local', 'bin');
   const settingsPath = path.join(home, '.claude', 'settings.json');
   const backupDir = path.join(home, '.claude', 'backups', 'multi-account-switch-installer');
-  const cliSource = path.join(repoRoot, 'cc-switch.cjs');
-  const storeIoSource = path.join(repoRoot, 'lib', 'store', 'io.cjs');
-  const storeAccountsSource = path.join(repoRoot, 'lib', 'store', 'accounts.cjs');
-  const usageCacheSource = path.join(repoRoot, 'lib', 'usage', 'cache.cjs');
-  const usageFetchSource = path.join(repoRoot, 'lib', 'usage', 'fetch.cjs');
-  const usageFormatSource = path.join(repoRoot, 'lib', 'usage', 'format.cjs');
-  const outputAccountsSource = path.join(repoRoot, 'lib', 'output', 'accounts.cjs');
-  const outputUsageSource = path.join(repoRoot, 'lib', 'output', 'usage.cjs');
-  const outputMessagesSource = path.join(repoRoot, 'lib', 'output', 'messages.cjs');
-  const actionSyncSource = path.join(repoRoot, 'lib', 'actions', 'sync.cjs');
-  const actionUsageSource = path.join(repoRoot, 'lib', 'actions', 'usage.cjs');
-  const actionRemoveSource = path.join(repoRoot, 'lib', 'actions', 'remove.cjs');
-  const actionListSource = path.join(repoRoot, 'lib', 'actions', 'list.cjs');
-  const actionSwitchSource = path.join(repoRoot, 'lib', 'actions', 'switch.cjs');
-  const actionSwitchPipelineSource = path.join(repoRoot, 'lib', 'actions', 'switch-pipeline.cjs');
-  const actionRenameSource = path.join(repoRoot, 'lib', 'actions', 'rename.cjs');
-  const actionStagedSource = path.join(repoRoot, 'lib', 'actions', 'staged.cjs');
-  const actionWatcherSource = path.join(repoRoot, 'lib', 'actions', 'watcher.cjs');
-  const storeLockSource = path.join(repoRoot, 'lib', 'store', 'lock.cjs');
-  const authGuardSource = path.join(repoRoot, 'lib', 'auth', 'guard.cjs');
-  const authRefreshSource = path.join(repoRoot, 'lib', 'auth', 'refresh.cjs');
-  const procSessionsSource = path.join(repoRoot, 'lib', 'proc', 'sessions.cjs');
-  const sessionStartSource = path.join(repoRoot, 'session-start.cjs');
-  const statuslineSource = path.join(repoRoot, 'statusline.cjs');
   const cliTarget = path.join(binDir, 'cc-switch.cjs');
   const sessionStartTarget = path.join(hooksDir, 'session-start.cjs');
-  const statuslineTarget = path.join(hooksDir, 'statusline.cjs');
-  const statuslineTargetConfigPath = path.join(hooksDir, 'statusline-target.json');
-  const hookCommand = process.platform === 'win32'
-    ? `node "${cliTarget}" sync`
-    : `node '${cliTarget}' sync`;
-  const startupHookCommand = process.platform === 'win32'
-    ? `node "${sessionStartTarget}"`
-    : `node '${sessionStartTarget}'`;
+  const q = process.platform === 'win32' ? '"' : "'";
+  const hookCommand = `node ${q}${cliTarget}${q} sync`;
+  const startupHookCommand = `node ${q}${sessionStartTarget}${q}`;
   const legacyHookCommands = [
     `& '${path.join(home, '.claude', 'hooks', 'sync-auth.ps1')}'`,
     `& '${path.join(installRoot, 'hooks', 'sync-auth.ps1')}'`,
@@ -130,135 +92,29 @@ function installCommands() {
   ];
 
   ensureDir(binDir);
-  ensureDir(binLibStoreDir);
-  ensureDir(binLibUsageDir);
-  ensureDir(binLibOutputDir);
-  ensureDir(binLibActionsDir);
-  ensureDir(binLibAuthDir);
-  ensureDir(binLibProcDir);
   ensureDir(hooksDir);
-  ensureDir(commandsDir);
   ensureDir(userBinDir);
-  fs.copyFileSync(cliSource, cliTarget);
-  fs.copyFileSync(storeIoSource, path.join(binLibStoreDir, 'io.cjs'));
-  fs.copyFileSync(storeAccountsSource, path.join(binLibStoreDir, 'accounts.cjs'));
-  fs.copyFileSync(usageCacheSource, path.join(binLibUsageDir, 'cache.cjs'));
-  fs.copyFileSync(usageFetchSource, path.join(binLibUsageDir, 'fetch.cjs'));
-  fs.copyFileSync(usageFormatSource, path.join(binLibUsageDir, 'format.cjs'));
-  fs.copyFileSync(outputAccountsSource, path.join(binLibOutputDir, 'accounts.cjs'));
-  fs.copyFileSync(outputUsageSource, path.join(binLibOutputDir, 'usage.cjs'));
-  fs.copyFileSync(outputMessagesSource, path.join(binLibOutputDir, 'messages.cjs'));
-  fs.copyFileSync(actionSyncSource, path.join(binLibActionsDir, 'sync.cjs'));
-  fs.copyFileSync(actionUsageSource, path.join(binLibActionsDir, 'usage.cjs'));
-  fs.copyFileSync(actionRemoveSource, path.join(binLibActionsDir, 'remove.cjs'));
-  fs.copyFileSync(actionListSource, path.join(binLibActionsDir, 'list.cjs'));
-  fs.copyFileSync(actionSwitchSource, path.join(binLibActionsDir, 'switch.cjs'));
-  fs.copyFileSync(actionSwitchPipelineSource, path.join(binLibActionsDir, 'switch-pipeline.cjs'));
-  fs.copyFileSync(actionRenameSource, path.join(binLibActionsDir, 'rename.cjs'));
-  fs.copyFileSync(actionStagedSource, path.join(binLibActionsDir, 'staged.cjs'));
-  fs.copyFileSync(actionWatcherSource, path.join(binLibActionsDir, 'watcher.cjs'));
-  fs.copyFileSync(storeLockSource, path.join(binLibStoreDir, 'lock.cjs'));
-  fs.copyFileSync(authGuardSource, path.join(binLibAuthDir, 'guard.cjs'));
-  fs.copyFileSync(authRefreshSource, path.join(binLibAuthDir, 'refresh.cjs'));
-  fs.copyFileSync(procSessionsSource, path.join(binLibProcDir, 'sessions.cjs'));
-  fs.copyFileSync(sessionStartSource, sessionStartTarget);
-  fs.copyFileSync(statuslineSource, statuslineTarget);
+  fs.copyFileSync(path.join(repoRoot, 'cc-switch.cjs'), cliTarget);
+  fs.cpSync(path.join(repoRoot, 'lib'), path.join(binDir, 'lib'), { recursive: true });
+  fs.copyFileSync(path.join(repoRoot, 'session-start.cjs'), sessionStartTarget);
 
-  if (process.platform === 'win32') {
-    const switchCmd = `@echo off\r\nnode "${cliTarget}" --usage-command "cc-switch" %*\r\n`;
-    const syncCmd = `@echo off\r\nnode "${cliTarget}" sync %*\r\n`;
-    const ccsCmd = `@echo off\r\nnode "${cliTarget}" --usage-command "ccs" %*\r\n`;
-    const ccsoCmd = `@echo off\r\nnode "${cliTarget}" sync %*\r\n`;
-    const switchSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget.replace(/\\/g, '/')}'\nnode "$script_path" --usage-command "cc-switch" "$@"\n`;
-    const syncSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget.replace(/\\/g, '/')}'\nnode "$script_path" sync "$@"\n`;
-    const ccsSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget.replace(/\\/g, '/')}'\nnode "$script_path" --usage-command "ccs" "$@"\n`;
-    const ccsoSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget.replace(/\\/g, '/')}'\nnode "$script_path" sync "$@"\n`;
-
-    writeFileExecutable(path.join(userBinDir, 'cc-switch.cmd'), switchCmd);
-    writeFileExecutable(path.join(userBinDir, 'cc-sync-oauth.cmd'), syncCmd);
-    writeFileExecutable(path.join(userBinDir, 'ccs.cmd'), ccsCmd);
-    writeFileExecutable(path.join(userBinDir, 'ccso.cmd'), ccsoCmd);
-    writeFileExecutable(path.join(userBinDir, 'cc-switch'), switchSh);
-    writeFileExecutable(path.join(userBinDir, 'cc-sync-oauth'), syncSh);
-    writeFileExecutable(path.join(userBinDir, 'ccs'), ccsSh);
-    writeFileExecutable(path.join(userBinDir, 'ccso'), ccsoSh);
-  } else {
-    const switchSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget}'\nnode "$script_path" --usage-command "cc-switch" "$@"\n`;
-    const syncSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget}'\nnode "$script_path" sync "$@"\n`;
-    const ccsSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget}'\nnode "$script_path" --usage-command "ccs" "$@"\n`;
-    const ccsoSh = `#!/usr/bin/env bash\nset -euo pipefail\nscript_path='${cliTarget}'\nnode "$script_path" sync "$@"\n`;
-
-    writeFileExecutable(path.join(userBinDir, 'cc-switch'), switchSh);
-    writeFileExecutable(path.join(userBinDir, 'cc-sync-oauth'), syncSh);
-    writeFileExecutable(path.join(userBinDir, 'ccs'), ccsSh);
-    writeFileExecutable(path.join(userBinDir, 'ccso'), ccsoSh);
+  // cc-switch / cc-sync-oauth are deprecated aliases kept for existing users.
+  const launchers = { ccs: '', ccso: 'sync ', 'cc-switch': '', 'cc-sync-oauth': 'sync ' };
+  for (const [name, subcommand] of Object.entries(launchers)) {
+    const sh = `#!/usr/bin/env bash\nset -euo pipefail\nnode '${cliTarget.replace(/\\/g, '/')}' ${subcommand}"$@"\n`;
+    writeFileExecutable(path.join(userBinDir, name), sh);
+    if (process.platform === 'win32') {
+      writeFileExecutable(path.join(userBinDir, `${name}.cmd`), `@echo off\r\nnode "${cliTarget}" ${subcommand}%*\r\n`);
+    }
   }
-
-  const commandShell = process.platform === 'win32' ? 'node' : 'node';
-  const switchCommandPathLiteral = process.platform === 'win32' ? cliTarget.replace(/\\/g, '/') : cliTarget;
-  const switchCommandBody = process.platform === 'win32'
-    ? `node "${cliTarget}" --usage-command "/cc-switch" $ARGUMENTS`
-    : `node '${cliTarget}' --usage-command "/cc-switch" $ARGUMENTS`;
-  const syncCommandBody = process.platform === 'win32'
-    ? `node "${cliTarget}" sync`
-    : `node '${cliTarget}' sync`;
-  const switchAllowed = `Bash(${commandShell} ${switchCommandPathLiteral}:*)`;
-  const syncAllowed = `Bash(${commandShell} ${switchCommandPathLiteral}:*)`;
-
-  const switchCommandMarkdown = `---
-description: Show saved Claude OAuth accounts and switch \`oauthAccount\` by index, email, or account UUID.
-argument-hint: [index|email|accountUuid]
-allowed-tools: ["${switchAllowed}"]
-disable-model-invocation: true
----
-
-Run the installed local switch command and use its output as the command result.
-
-0!
-${switchCommandBody}
-0
-`.replace(/\u00060!/g, '```!').replace(/\u00060\n/g, '```\n');
-
-  const syncCommandMarkdown = `---
-description: Sync the current Claude \`oauthAccount\` into \`oauthList\`.
-allowed-tools: ["${syncAllowed}"]
-disable-model-invocation: true
----
-
-Run the installed local sync command and use its output as the command result.
-
-0!
-${syncCommandBody}
-0
-`.replace(/\u00060!/g, '```!').replace(/\u00060\n/g, '```\n');
-
-  fs.writeFileSync(path.join(commandsDir, 'cc-switch.md'), switchCommandMarkdown, 'utf8');
-  fs.writeFileSync(path.join(commandsDir, 'cc-sync-oauth.md'), syncCommandMarkdown, 'utf8');
 
   backupFile(settingsPath, backupDir);
   const settings = readJson(settingsPath, {});
-  const existingStatusLine = settings.statusLine && typeof settings.statusLine === 'object' ? settings.statusLine : null;
   settings.$schema ||= 'https://json.schemastore.org/claude-code-settings.json';
   settings.hooks ||= {};
   settings.hooks.Notification ||= [];
   settings.hooks.SessionStart ||= [];
-
-  const statusLineCommand = process.platform === 'win32'
-    ? `node "${statuslineTarget}"`
-    : `node '${statuslineTarget}'`;
-
-  if (!existingStatusLine || existingStatusLine.command !== statusLineCommand) {
-    if (existingStatusLine?.type === 'command' && existingStatusLine.command && !isStaleStatusLineTarget(existingStatusLine)) {
-      fs.writeFileSync(statuslineTargetConfigPath, `${JSON.stringify(existingStatusLine, null, 2)}\n`, 'utf8');
-    } else if (fs.existsSync(statuslineTargetConfigPath)) {
-      fs.rmSync(statuslineTargetConfigPath, { force: true });
-    }
-
-    settings.statusLine = {
-      type: 'command',
-      command: statusLineCommand
-    };
-  }
+  restoreLegacyStatusLine(settings, hooksDir);
 
   let matcher = settings.hooks.Notification.find((entry) => entry && entry.matcher === 'auth_success');
   if (!matcher) {
@@ -289,7 +145,7 @@ ${syncCommandBody}
   writeJson(settingsPath, settings);
 
   console.log(`Installed multi-account switcher scripts to ${installRoot}`);
-  console.log('Installed commands: cc-switch, cc-sync-oauth, ccs, ccso, /cc-switch, /cc-sync-oauth');
+  console.log('Installed commands: ccs, ccso (cc-switch and cc-sync-oauth are deprecated aliases)');
 
   const pathResult = ensureUserPathEntry(userBinDir);
   if (pathResult.changed) {
