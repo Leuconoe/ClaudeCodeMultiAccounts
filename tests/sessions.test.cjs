@@ -32,9 +32,10 @@ function detect(rows, commands = {}, options = {}) {
   return { ...context.module.exports.detectClaudeSessions(), calls };
 }
 
-for (const platform of ['darwin', 'linux']) {
+// macOS `comm` is the full path; Linux `comm` is only the basename.
+for (const [platform, comm] of [['darwin', '/Users/example/.local/bin/claude'], ['linux', 'claude']]) {
   test(`${platform}: browser helper alone is not a session`, () => {
-    const result = detect('  123 /Users/example/.local/bin/claude\n', {
+    const result = detect(`  123 ${comm}\n`, {
       123: '/Users/example/.local/bin/claude --chrome-native-host\n',
     }, { platform });
     assert.strictEqual(result.detected, true);
@@ -62,13 +63,15 @@ test('bare executable name and paths containing spaces support the helper mode',
 });
 
 test('helper command appearing in prompt text is still a session', () => {
-  for (const args of [
-    '/bin/claude -p "explain --chrome-native-host"',
-    '/bin/claude -p "explain /bin/claude --chrome-native-host"',
-    '/bin/claude --chrome-native-host-other',
-    '/bin/claude',
-  ]) {
-    assert.strictEqual(detect('1 /bin/claude\n', { 1: args }).count, 1, args);
+  for (const comm of ['/bin/claude', 'claude']) {
+    for (const args of [
+      '/bin/claude -p "explain --chrome-native-host"',
+      '/bin/claude -p "explain /bin/claude --chrome-native-host"',
+      '/bin/claude --chrome-native-host-other',
+      '/bin/claude',
+    ]) {
+      assert.strictEqual(detect(`1 ${comm}\n`, { 1: args }).count, 1, `${comm}: ${args}`);
+    }
   }
 });
 
