@@ -41,6 +41,6 @@
   },
   "scripts": {
     "pack:check": "npm pack --dry-run",
-    "test": "node --test tests/sessions.test.cjs tests/guard.test.cjs tests/refresh.test.cjs tests/io.test.cjs tests/accounts.test.cjs tests/lock.test.cjs tests/pipeline.test.cjs tests/watcher.test.cjs tests/cli-switch.test.cjs"
+    "test": "node --test tests/sessions.test.cjs tests/guard.test.cjs tests/refresh.test.cjs tests/io.test.cjs tests/accounts.test.cjs tests/lock.test.cjs tests/pipeline.test.cjs tests/watcher.test.cjs tests/cli-switch.test.cjs tests/usage.test.cjs"
   }
 }

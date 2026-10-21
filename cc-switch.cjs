@@ -242,7 +242,7 @@ function buildSwitchContext(extra) {
     getStoredAccountsHeading,
     formatAccountSummary: (items) => formatAccountSummaryUi(items, {
       formatRelativeTime: formatRelativeTimeUi,
-      getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
+      getUsageColumns: getUsageColumnsUi,
     }),
     ...extra,
   };
@@ -390,7 +390,7 @@ async function run(options) {
         getStoredAccountsHeading,
         formatAccountSummary: (items) => formatAccountSummaryUi(items, {
           formatRelativeTime: formatRelativeTimeUi,
-          getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
+          getUsageColumns: getUsageColumnsUi,
         }),
       });
       return;
@@ -444,7 +444,7 @@ async function run(options) {
         formatUsageInfo: formatUsageInfoUi,
         formatAccountSummary: (items) => formatAccountSummaryUi(items, {
           formatRelativeTime: formatRelativeTimeUi,
-          getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
+          getUsageColumns: getUsageColumnsUi,
         }),
         getDisplayAccounts,
         getListGuidance,
