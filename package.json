@@ -1,6 +1,6 @@
 {
   "name": "claude-code-multi-accounts",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Installer and CLI (ccs / ccso) for switching Claude Code OAuth accounts on Windows, WSL, macOS, and Linux.",
   "license": "MIT",
   "type": "commonjs",
