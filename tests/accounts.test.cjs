@@ -74,3 +74,14 @@ test('getAccountKey: uuid preferred, email fallback', () => {
   assert.strictEqual(getAccountKey({ emailAddress: 'X@Y.com' }), 'email:x@y.com');
   assert.throws(() => getAccountKey({}));
 });
+
+test('syncStoreFromLive: preserves reauth flag until a new refresh token is captured', () => {
+  const config = makeConfig('uuid-a', 'a@test.com');
+  const credentials = { claudeAiOauth: liveOauth('a') };
+  const first = syncStoreFromLive({ accounts: [] }, config, credentials, deepCopy, STORE_VERSION);
+  first.store.accounts[0].needsReauth = true;
+  const same = syncStoreFromLive(first.store, config, credentials, deepCopy, STORE_VERSION);
+  assert.strictEqual(same.store.accounts[0].needsReauth, true);
+  const renewed = syncStoreFromLive(same.store, config, { claudeAiOauth: liveOauth('renewed') }, deepCopy, STORE_VERSION);
+  assert.strictEqual(renewed.store.accounts[0].needsReauth, undefined);
+});

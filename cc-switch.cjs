@@ -319,31 +319,18 @@ async function runWatcher(options) {
 
 async function run(options) {
   {
-    const config = readJson(options.configPath);
-    const credentials = readCredentials(options.credentialsPath);
+    const displayOnly = options.usageOnly || (!options.selector && !options.syncOnly && !options.touchCurrentOnly && !options.removeOnly && !options.renameOnly);
+    const config = displayOnly ? readJsonIfExists(options.configPath, {}) : readJson(options.configPath);
+    const credentials = readCredentials(options.credentialsPath, { allowMissing: displayOnly });
     const existingStore = normalizeStore(readJsonIfExists(options.storePath, { version: STORE_VERSION, accounts: [] }), STORE_VERSION);
-
-    if (options.usageOnly) {
-      const syncedForUsage = syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
-      if (syncedForUsage.warning) {
-        console.log(outputMessages.getSyncSkippedWarning(syncedForUsage.warning));
+    // Listing remains available after Claude Code clears a dead login. Never
+    // replace saved credentials with an empty live snapshot.
+    const syncLive = () => {
+      if (displayOnly && (!config.oauthAccount || !credentials?.claudeAiOauth)) {
+        return { store: existingStore, changed: false };
       }
-      await runUsageAction({
-        store: syncedForUsage.store,
-        config,
-        credentials,
-        fetchUsage: fetchUsageApi,
-        formatUsageInfo: formatUsageInfoUi,
-        refreshStoredUsageSnapshots: refreshStoredUsageSnapshotsUi,
-        writeStore,
-        options,
-        getAccountKey,
-        setRateLimitResetAt,
-        setRateLimitResetAtFromIso,
-        ensureDir,
-      });
-      return;
-    }
+      return syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
+    };
 
     if (options.syncOnly) {
       runSyncAction(existingStore, config, credentials, {
@@ -369,8 +356,38 @@ async function run(options) {
       return;
     }
 
+    // Capture the live login before every account operation, including failed
+    // or staged switches and usage requests that return no fresh API data.
+    const synced = syncLive();
+    if (synced.warning) {
+      console.log(outputMessages.getSyncSkippedWarning(synced.warning));
+    }
+    const store = synced.store;
+    if (synced.changed) {
+      writeStore(store, options);
+      console.log(`Synced current account into ${path.basename(options.storePath)}.`);
+    }
+
+    if (options.usageOnly) {
+      await runUsageAction({
+        store,
+        config,
+        credentials,
+        fetchUsage: fetchUsageApi,
+        formatUsageInfo: formatUsageInfoUi,
+        refreshStoredUsageSnapshots: refreshStoredUsageSnapshotsUi,
+        writeStore,
+        options,
+        getAccountKey,
+        setRateLimitResetAt,
+        setRateLimitResetAtFromIso,
+        ensureDir,
+      });
+      return;
+    }
+
     if (options.removeOnly) {
-      runRemoveAction(existingStore, options.removeIndex, {
+      runRemoveAction(store, options.removeIndex, {
         removeStoredAccount,
         writeStore,
         options,
@@ -381,7 +398,7 @@ async function run(options) {
     }
 
     if (options.renameOnly) {
-      runRenameAction(existingStore, options.renameIndex, options.renameAliasParts.join(' '), {
+      runRenameAction(store, options.renameIndex, options.renameAliasParts.join(' '), {
         writeStore,
         options,
         config,
@@ -396,11 +413,6 @@ async function run(options) {
       return;
     }
 
-    const synced = syncStoreFromLive(existingStore, config, credentials, deepCopy, STORE_VERSION);
-    if (synced.warning) {
-      console.log(outputMessages.getSyncSkippedWarning(synced.warning));
-    }
-    const store = synced.store;
     const accounts = getDisplayAccounts(store, config.oauthAccount);
 
     // A bare invocation is the moment to apply a switch staged earlier from
@@ -432,7 +444,6 @@ async function run(options) {
     if (!options.selector) {
       reportSlotHealth(accounts, options);
       await runListAction({
-        synced,
         store,
         config,
         credentials,
@@ -454,7 +465,6 @@ async function run(options) {
         setRateLimitResetAtFromIso,
         ensureDir,
         RESET_WINDOW_DAYS,
-        path,
       });
       return;
     }

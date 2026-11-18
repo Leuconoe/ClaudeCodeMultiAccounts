@@ -21,7 +21,7 @@ If a shell says `command not found` right after install, open a new terminal.
 ## Usage
 
 ```bash
-ccs                        # list stored accounts with usage
+ccs                        # sync the current login, then list accounts with usage
 ccs 1                      # switch to account [1]
 ccs --rename 1 Personal    # label an account (omit the name to clear it)
 ccs --remove 1             # forget a stored account
@@ -38,26 +38,37 @@ Inside Claude Code, prefix with `!`:
 
 Log into each account once in Claude Code (`/login`); the hook stores it. From then on switch with `ccs <index>`.
 
+`ccs` automatically saves the current live login before listing accounts, fetching usage, switching, renaming, or removing an account. The snapshot is saved even if usage fetching fails or a switch is staged. `ccso` remains available for an explicit sync.
+
 > **Deprecated:** the long-form commands `cc-switch` and `cc-sync-oauth` are still installed as aliases of `ccs` and `ccso`, but they will be removed in a future release. Switch to the short names.
 
 Example:
 
 ```text
 $ ccs
+Synced current account into .ClaudeCodeMultiAccounts.json.
+--- Current session ---
+Account: [0] Alex Example (alex@example.com) | Pro
+Session: active
+Access token expires: 2026. 4. 22. 2:00 PM
+Refresh token expires: 2026. 5. 22. 2:00 PM
+
 --- Usage ---
 5h remaining/reset: 78.0% / 2026. 4. 22. 2:00 PM
 7d remaining/reset: 94.0% / 2026. 4. 24. 9:00 AM
 
 Available Claude accounts:
-* [0] Alex Example | Pro | 5H:78% | 7D:94% | reset:~2h 44min | synced:just now | used:3m ago
-  [1] Taylor Example | Team Std | 5H:100% | 7D:81% | reset:1D 21h | synced:19h ago | used:19h ago
-  [2] Jordan Example | Team Prem | 5H:0% | 7D:0% | reset:2D 5h | synced:1d ago | used:1d ago
+* [0] Alex Example | Pro | 5H:78% | 7D:94% | reset:~2h 44min | synced:just now | used:3m ago | session:active
+  [1] Taylor Example | Team Std | 5H:100% | 7D:81% | reset:1D 21h | synced:19h ago | used:19h ago | session:expired - refresh required
+  [2] Jordan Example | Team Prem | 5H:0% | 7D:0% | reset:2D 5h | synced:1d ago | used:1d ago | session:expired - login required
 
 Run ccs <index> to make one of these stored entries the active Claude account.
 Run ccs --remove <index> to remove a stored account.
 ```
 
 Columns: `5H` / `7D` are the remaining 5-hour and 7-day quota with a reset estimate (cached for non-active accounts); `used` is when the account was last active. The plan label is a best-effort guess.
+
+`ccs` and `ccs usage` also show the current account, token expiry times, and session status. Expired or missing live credentials do not hide stored accounts or cached usage. Cached usage is labeled with its fetch time; a renewal notice explains whether to refresh with `ccs <index>` or log in again with `/login` and capture the login with `ccso`. Each account row includes its local session status.
 
 ## Notes
 

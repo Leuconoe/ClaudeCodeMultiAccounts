@@ -201,3 +201,15 @@ test('verifyLiveState reads macOS keychain credentials', () => {
   }), { ok: true });
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('optional credential reads tolerate a missing keychain item but preserve access errors', (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const credentialsPath = path.join(dir, '.credentials.json');
+  const missing = keychainExecFactory({ failRead: Object.assign(new Error('not found'), { status: 44 }) });
+  const options = { platform: 'darwin', execFileSync: missing.execFileSync, allowMissing: true };
+  assert.deepStrictEqual(readCredentials(credentialsPath, options), {});
+  assert.throws(() => readCredentials(credentialsPath, { ...options, allowMissing: false }), /was not found/);
+  const denied = keychainExecFactory({ failRead: Object.assign(new Error('denied'), { status: 36 }) });
+  assert.throws(() => readCredentials(credentialsPath, { ...options, execFileSync: denied.execFileSync }), /Failed to read macOS keychain credentials/);
+});
